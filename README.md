@@ -16,8 +16,8 @@
 
 [![PyPI Version](https://img.shields.io/pypi/v/kubmonitor-cli?style=flat-square&color=blue)](https://pypi.org/project/kubmonitor-cli/)
 [![Python Version](https://img.shields.io/pypi/pyversions/kubmonitor-cli?style=flat-square)](https://pypi.org/project/kubmonitor-cli/)
-[![License](https://img.shields.io/github/license/vios-s/kubmonitor-cli?style=flat-square)](LICENSE)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/vios-s/kubmonitor-cli/release.yml?style=flat-square)](https://github.com/vios-s/kubmonitor-cli/actions)
+[![License](https://img.shields.io/github/license/vios-s/kubmonitor_cli?style=flat-square)](LICENSE)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/vios-s/kubmonitor_cli/release.yml?style=flat-square)](https://github.com/vios-s/kubmonitor-cli/actions)
 
 </div>
 
