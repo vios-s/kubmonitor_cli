@@ -64,7 +64,7 @@ kubmonitor <namespace>
 **Example:**
 
 ```bash
-kubmonitor default
+kubmonitor eidf098ns
 ```
 
 ### Keyboard Shortcuts
