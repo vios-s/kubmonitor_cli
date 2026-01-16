@@ -63,6 +63,7 @@ kubmonitor eidf098ns
 
 | Key | Description |
 | :---: | :--- |
+| `↑` / `↓` | **Navigate** up and down |
 | `q` | **Quit** the application |
 | `Ctrl+C` | Force Exit |
 
