@@ -210,7 +210,7 @@ def make_layout():
     )
     return layout
 
-def generate_table(jobs):
+def generate_table(jobs, offset=0, max_rows=None):
     table = Table(box=box.SIMPLE_HEAD, expand=True, show_lines=False)
     table.add_column("Job / Pod Name", style="cyan", no_wrap=True)
     table.add_column("User", style="magenta")
@@ -218,7 +218,11 @@ def generate_table(jobs):
     table.add_column("Comp", justify="right")
     table.add_column("Duration", justify="right")
     
-    for job in jobs:
+    visible_jobs = jobs[offset:]
+    if max_rows:
+        visible_jobs = visible_jobs[:max_rows]
+    
+    for job in visible_jobs:
         status_style = "green" if job['status'] == 'Completed' else "red" if job['status'] == 'Failed' else "yellow"
         
         table.add_row(
@@ -281,22 +285,57 @@ def main():
         with Live(layout, refresh_per_second=4, screen=True):
             last_fetch = 0
             fetch_interval = 2
+            scroll_offset = 0
             
             quota = get_quota(args.namespace)
             jobs = get_jobs_pods(args.namespace)
             
             while True:
-                # Input Handling
+                # Input Handling - process all buffered input and use last navigation key
                 key = None
                 if platform.system() != "Windows":
-                    if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
-                        key = sys.stdin.read(1)
+                    while sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
+                        char = sys.stdin.read(1)
+                        if char == '\x1b':  # Escape sequence start
+                            next1 = sys.stdin.read(1)
+                            if next1 == '[':
+                                next2 = sys.stdin.read(1)
+                                if next2 == 'A':  # Up arrow on Unix/Linux
+                                    key = 'up'
+                                elif next2 == 'B':  # Down arrow on Unix/Linux
+                                    key = 'down'
+                        elif char.lower() == 'q':
+                            key = 'q'
                 else:
-                    if msvcrt.kbhit():
-                        key = msvcrt.getch().decode('utf-8').lower()
+                    while msvcrt.kbhit():
+                        key_input = msvcrt.getch()
+                        if key_input == b'H':  # Up arrow on Windows
+                            key = 'up'
+                        elif key_input == b'P':  # Down arrow on Windows
+                            key = 'down'
+                        else:
+                            decoded = key_input.decode('utf-8').lower()
+                            if decoded == 'q':
+                                key = 'q'
                 
                 if key and key.lower() == 'q':
                     break
+                
+                cpu_total, cpu_per_core, mem, gpu = get_local_metrics()
+                
+                # Calculate max visible jobs
+                available_height = console.height - 8
+                avg_rows_per_job = 2
+                max_visible_jobs = max(10, available_height // avg_rows_per_job)
+                
+                # Calculate max scroll position - stop when last job is visible
+                max_scroll = max(0, len(jobs) - max_visible_jobs)
+                
+                # Navigation
+                if key == 'up':
+                    scroll_offset = max(0, scroll_offset - 1)
+                elif key == 'down':
+                    scroll_offset = min(max_scroll, scroll_offset + 1)
                 
                 now = time.time()
                 if now - last_fetch > fetch_interval:
@@ -304,11 +343,11 @@ def main():
                     jobs = get_jobs_pods(args.namespace)
                     last_fetch = now
                 
-                cpu_total, cpu_per_core, mem, gpu = get_local_metrics()
+                jobs_title = f"Jobs ({len(jobs)})"
                 
                 layout["cluster_resources"].update(generate_cluster_resources(quota))
                 layout["local_resources"].update(generate_local_resources(cpu_total, cpu_per_core, mem, gpu))
-                layout["right"].update(Panel(generate_table(jobs), title=f"Jobs ({len(jobs)})", border_style="green"))
+                layout["right"].update(Panel(generate_table(jobs, offset=scroll_offset, max_rows=max_visible_jobs), title=jobs_title, border_style="green"))
                 
                 time.sleep(0.1)
                 
