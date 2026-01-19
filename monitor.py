@@ -54,7 +54,7 @@ def run_cmd(cmd):
 def get_quota(ns, use_mock=False, mock_data=None):
     if use_mock and mock_data:
         return mock_data['quota']
-    
+
     output = run_cmd(f"kubectl -n {ns} describe resourcequota")
     data = {
         'cpu': {'used': 0, 'limit': 0, 'str': '0/0'},
@@ -109,7 +109,7 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None):
     else:
         jobs_json = run_cmd(f"kubectl -n {ns} get jobs -o json")
         pods_json = run_cmd(f"kubectl -n {ns} get pods -o json")
-        
+
         try:
             j = json.loads(jobs_json)
             jobs = j.get('items', [])
@@ -341,21 +341,41 @@ def generate_cluster_resources(quota):
 def print_help():
     console = Console(force_terminal=True, legacy_windows=False)
 
-    console.print("\n[bold cyan]kubmonitor[/bold cyan] - Real-time Kubernetes dashboard combining cluster quotas and local metrics.\n", highlight=False)
+    console.print(
+        "\n[bold cyan]kubmonitor[/bold cyan] - Real-time Kubernetes "
+        "dashboard combining cluster quotas and local metrics.\n",
+        highlight=False
+    )
 
     console.print("[bold yellow]Usage:[/bold yellow]")
-    console.print("  [green]kubmonitor[/green] [cyan][[/cyan][dim]NAMESPACE[/dim][cyan]][/cyan] [cyan][[/cyan][magenta]--mock[/magenta][cyan]][/cyan] [cyan][[/cyan][magenta]--help[/magenta][cyan]][/cyan] [cyan][[/cyan][magenta]--version[/magenta][cyan]][/cyan]\n")
+    console.print(
+        "  [green]kubmonitor[/green] [cyan][[/cyan][dim]NAMESPACE[/dim]"
+        "[cyan]][/cyan] [cyan][[/cyan][magenta]--mock[/magenta][cyan]][/cyan] "
+        "[cyan][[/cyan][magenta]--help[/magenta][cyan]][/cyan] "
+        "[cyan][[/cyan][magenta]--version[/magenta][cyan]][/cyan]\n"
+    )
 
     console.print("[bold yellow]Positional Arguments:[/bold yellow]")
     console.print("  [cyan]NAMESPACE[/cyan]      Kubernetes namespace to monitor.")
-    console.print("                 [dim]Note: Cannot be used with --mock flag.[/dim]\n")
+    console.print(
+        "                 [dim]Note: Cannot be used with --mock flag.[/dim]\n"
+    )
 
     console.print("[bold yellow]Options:[/bold yellow]")
     console.print("  [magenta]-h, --help[/magenta]     Show this help message.")
-    console.print("  [magenta]--mock[/magenta]         Use mock data instead of querying the actual Kubernetes cluster.")
+    console.print(
+        "  [magenta]--mock[/magenta]         Use mock data instead of "
+        "querying the actual Kubernetes cluster."
+    )
     console.print("                 Useful for testing and development.")
-    console.print("                 [dim]When using --mock, the namespace argument is ignored.[/dim]")
-    console.print("  [magenta]-V, --version[/magenta]  Show kubmonitor's version number.\n")
+    console.print(
+        "                 [dim]When using --mock, the namespace argument "
+        "is ignored.[/dim]"
+    )
+    console.print(
+        "  [magenta]-V, --version[/magenta]  Show kubmonitor's version "
+        "number.\n"
+    )
 
     console.print("[bold yellow]Examples:[/bold yellow]")
     console.print("  [dim]# Monitor the default namespace[/dim]")
@@ -370,28 +390,44 @@ def print_help():
     console.print("  [cyan]q[/cyan]              Quit the application")
     console.print("  [cyan]Ctrl+C[/cyan]         Force exit\n")
 
-    console.print("[dim]For more information, visit: https://github.com/vios-s/kubmonitor_cli[/dim]\n")
+    console.print(
+        "[dim]For more information, visit: "
+        "https://github.com/vios-s/kubmonitor_cli[/dim]\n"
+    )
 
 
 def main():
     if '--help' in sys.argv or '-h' in sys.argv:
         print_help()
         sys.exit(0)
-    
+
     parser = argparse.ArgumentParser(prog='kubmonitor', add_help=False)
     parser.add_argument('namespace', nargs='?', default='default')
     parser.add_argument('--mock', action='store_true')
-    parser.add_argument('--version', '-V', action='version', version=f'kubmonitor {__version__}')
-    
+    parser.add_argument('--version', '-V', action='version',
+                        version=f'kubmonitor {__version__}')
+
     args = parser.parse_args()
 
     if args.mock and args.namespace != 'default':
         console = Console()
-        console.print("\n[bold red]Error:[/bold red] Cannot specify a namespace when using [magenta]--mock[/magenta] flag.\n")
-        console.print("[dim]Mock mode uses generated test data and doesn't connect to a real cluster.[/dim]\n")
+        console.print(
+            "\n[bold red]Error:[/bold red] Cannot specify a namespace when "
+            "using [magenta]--mock[/magenta] flag.\n"
+        )
+        console.print(
+            "[dim]Mock mode uses generated test data and doesn't connect "
+            "to a real cluster.[/dim]\n"
+        )
         console.print("[yellow]Usage:[/yellow]")
-        console.print("  [green]kubmonitor --mock[/green]          [dim]# Use mock data[/dim]")
-        console.print("  [green]kubmonitor my-namespace[/green]   [dim]# Monitor real namespace[/dim]\n")
+        console.print(
+            "  [green]kubmonitor --mock[/green]"
+            "         [dim]# Use mock data[/dim]"
+        )
+        console.print(
+            "  [green]kubmonitor my-namespace[/green]"
+            "   [dim]# Monitor real namespace[/dim]\n"
+        )
         sys.exit(1)
 
     if args.mock:
@@ -427,7 +463,8 @@ def main():
             scroll_offset = 0
 
             quota = get_quota(args.namespace, use_mock=args.mock, mock_data=mock_data)
-            jobs = get_jobs_pods(args.namespace, use_mock=args.mock, mock_data=mock_data)
+            jobs = get_jobs_pods(args.namespace, use_mock=args.mock,
+                                 mock_data=mock_data)
 
             while True:
                 # Input Handling - process all buffered input and use last nav key
@@ -462,15 +499,17 @@ def main():
 
                 cpu_total, cpu_per_core, mem, gpu = get_local_metrics()
 
-                # Calculate total rows needed for all jobs (1 row per job + 1 row per pod)
+                # Calculate total rows needed for all jobs (1 row/job + 1 row/pod)
                 total_rows = sum(1 + len(job['pods']) for job in jobs)
 
                 # Calculate max visible rows (approximate based on available height)
-                # Account for header(3) + footer(3) + panel borders(2) + table header(2) = 10
+                # Account for:
+                # header(3) + footer(3) + panel borders(2) + table header(2) = 10
                 available_height = console.height - 10
                 max_visible_rows = max(10, available_height)
 
-                # Calculate max scroll position with buffer to ensure last job's pods are visible
+                # Calculate max scroll position with buffer to ensure
+                # last job's pods are visible
                 max_scroll = max(0, total_rows - max_visible_rows + 3)
 
                 # Navigation
@@ -481,8 +520,10 @@ def main():
 
                 now = time.time()
                 if now - last_fetch > fetch_interval:
-                    quota = get_quota(args.namespace, use_mock=args.mock, mock_data=mock_data)
-                    jobs = get_jobs_pods(args.namespace, use_mock=args.mock, mock_data=mock_data)
+                    quota = get_quota(args.namespace, use_mock=args.mock,
+                                      mock_data=mock_data)
+                    jobs = get_jobs_pods(args.namespace, use_mock=args.mock,
+                                         mock_data=mock_data)
                     last_fetch = now
 
                 jobs_title = f"Jobs ({len(jobs)})"

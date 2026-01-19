@@ -209,7 +209,7 @@ def _generate_jobs_data(now):
             "image": "steve/marian-mt:3.1",
         },
     ]
-    
+
     return jobs_data
 
 
@@ -235,12 +235,12 @@ def _build_jobs_items(jobs_data):
                 }
             }
         }
-        
+
         if "completionTime" in job_info:
             job["status"]["completionTime"] = job_info["completionTime"]
-        
+
         jobs_items.append(job)
-    
+
     return jobs_items
 
 
@@ -262,7 +262,7 @@ def _generate_pods_items(jobs_data):
             phase = "Succeeded"
         else:
             phase = "Failed"
-        
+
         for _ in range(num_pods):
             pods_items.append({
                 "metadata": {
@@ -272,7 +272,7 @@ def _generate_pods_items(jobs_data):
                     "phase": phase
                 }
             })
-    
+
     return pods_items
 
 
@@ -298,11 +298,11 @@ def _generate_quota():
 
 def generate_mock_data():
     now = datetime.now(timezone.utc)
-    
+
     jobs_data = _generate_jobs_data(now)
     jobs_items = _build_jobs_items(jobs_data)
     pods_items = _generate_pods_items(jobs_data)
-    
+
     return {
         "quota": _generate_quota(),
         "jobs": {
