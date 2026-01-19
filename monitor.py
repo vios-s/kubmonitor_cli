@@ -273,11 +273,8 @@ def generate_table(jobs, offset=0, max_rows=None):
     table.add_column("Comp", justify="right")
     table.add_column("Duration", justify="right")
 
-    visible_jobs = jobs[offset:]
-    if max_rows:
-        visible_jobs = visible_jobs[:max_rows]
-
-    for job in visible_jobs:
+    all_rows = []
+    for job in jobs:
         if job['status'] == 'Completed':
             status_style = "green"
         elif job['status'] == 'Failed':
@@ -285,13 +282,14 @@ def generate_table(jobs, offset=0, max_rows=None):
         else:
             status_style = "yellow"
 
-        table.add_row(
-            f"[bold]{job['name']}[/]",
-            job['user'],
-            f"[{status_style}]{job['status']}[/]",
-            job['completions'],
-            job['duration']
-        )
+        all_rows.append({
+            'type': 'job',
+            'name': f"[bold]{job['name']}[/]",
+            'user': job['user'],
+            'status': f"[{status_style}]{job['status']}[/]",
+            'completions': job['completions'],
+            'duration': job['duration']
+        })
 
         for i, pod_str in enumerate(job['pods']):
             p_name = pod_str.split(' (')[0]
@@ -302,13 +300,27 @@ def generate_table(jobs, offset=0, max_rows=None):
 
             p_status_style = "green" if p_status == 'Running' else "dim"
 
-            table.add_row(
-                f"  {prefix}{p_name}",
-                "",
-                f"[{p_status_style}]{p_status}[/]",
-                "",
-                ""
-            )
+            all_rows.append({
+                'type': 'pod',
+                'name': f"  {prefix}{p_name}",
+                'user': "",
+                'status': f"[{p_status_style}]{p_status}[/]",
+                'completions': "",
+                'duration': ""
+            })
+
+    visible_rows = all_rows[offset:]
+    if max_rows:
+        visible_rows = visible_rows[:max_rows]
+
+    for row in visible_rows:
+        table.add_row(
+            row['name'],
+            row['user'],
+            row['status'],
+            row['completions'],
+            row['duration']
+        )
 
     return table
 
@@ -396,13 +408,16 @@ def main():
 
                 cpu_total, cpu_per_core, mem, gpu = get_local_metrics()
 
-                # Calculate max visible jobs
-                available_height = console.height - 8
-                avg_rows_per_job = 2
-                max_visible_jobs = max(10, available_height // avg_rows_per_job)
+                # Calculate total rows needed for all jobs (1 row per job + 1 row per pod)
+                total_rows = sum(1 + len(job['pods']) for job in jobs)
 
-                # Calculate max scroll position - stop when last job is visible
-                max_scroll = max(0, len(jobs) - max_visible_jobs)
+                # Calculate max visible rows (approximate based on available height)
+                # Account for header(3) + footer(3) + panel borders(2) + table header(2) = 10
+                available_height = console.height - 10
+                max_visible_rows = max(10, available_height)
+
+                # Calculate max scroll position with buffer to ensure last job's pods are visible
+                max_scroll = max(0, total_rows - max_visible_rows + 3)
 
                 # Navigation
                 if key == 'up':
@@ -422,7 +437,7 @@ def main():
                 layout["local_resources"].update(
                     generate_local_resources(cpu_total, cpu_per_core, mem, gpu))
                 layout["right"].update(Panel(generate_table(
-                    jobs, offset=scroll_offset, max_rows=max_visible_jobs),
+                    jobs, offset=scroll_offset, max_rows=max_visible_rows),
                     title=jobs_title, border_style="green"))
 
                 time.sleep(0.1)
