@@ -59,6 +59,27 @@ kubmonitor <namespace>
 kubmonitor eidf098ns
 ```
 
+### Mock Mode (Testing/Debug)
+
+For testing or debugging purposes without requiring access to a Kubernetes cluster, you can use the `--mock` flag to run KubMonitor with simulated data:
+
+```bash
+kubmonitor <namespace> --mock
+```
+
+**Example:**
+
+```bash
+kubmonitor test-namespace --mock
+```
+
+This will generate realistic mock data including:
+- Simulated resource quotas (CPU, Memory, GPU)
+- Mock Kubernetes jobs with various states (running, completed, failed)
+- Mock pods with realistic resource usage patterns
+- Generated timestamps and durations
+
+
 ### Keyboard Shortcuts
 
 | Key | Description |

@@ -19,6 +19,27 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.console import Console
 from rich import box
+from mock_data import generate_mock_data
+
+
+def format_duration(total_seconds):
+    if total_seconds < 60:
+        return f"{int(total_seconds)}s"
+    elif total_seconds < 3600:  # < 1 hour
+        minutes = int(total_seconds / 60)
+        return f"{minutes}m"
+    elif total_seconds < 86400:  # < 1 day
+        hours = int(total_seconds / 3600)
+        minutes = int((total_seconds % 3600) / 60)
+        return f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+    elif total_seconds < 604800:  # < 1 week
+        days = int(total_seconds / 86400)
+        hours = int((total_seconds % 86400) / 3600)
+        return f"{days}d {hours}h" if hours > 0 else f"{days}d"
+    else:  # >= 1 week
+        weeks = int(total_seconds / 604800)
+        days = int((total_seconds % 604800) / 86400)
+        return f"{weeks}w {days}d" if days > 0 else f"{weeks}w"
 
 
 def run_cmd(cmd):
@@ -29,7 +50,10 @@ def run_cmd(cmd):
         return ""
 
 
-def get_quota(ns):
+def get_quota(ns, use_mock=False, mock_data=None):
+    if use_mock and mock_data:
+        return mock_data['quota']
+    
     output = run_cmd(f"kubectl -n {ns} describe resourcequota")
     data = {
         'cpu': {'used': 0, 'limit': 0, 'str': '0/0'},
@@ -77,16 +101,26 @@ def get_quota(ns):
     return data
 
 
-def get_jobs_pods(ns):
-    jobs_json = run_cmd(f"kubectl -n {ns} get jobs -o json")
-    pods_json = run_cmd(f"kubectl -n {ns} get pods -o json")
+def get_jobs_pods(ns, use_mock=False, mock_data=None):
+    if use_mock and mock_data:
+        jobs = mock_data['jobs']['items']
+        pods = mock_data['pods']['items']
+    else:
+        jobs_json = run_cmd(f"kubectl -n {ns} get jobs -o json")
+        pods_json = run_cmd(f"kubectl -n {ns} get pods -o json")
+        
+        try:
+            j = json.loads(jobs_json)
+            jobs = j.get('items', [])
+            p = json.loads(pods_json)
+            pods = p.get('items', [])
+        except Exception:
+            jobs = []
+            pods = []
 
     jobs_data = []
     try:
-        j = json.loads(jobs_json)
-        p = json.loads(pods_json).get('items', [])
-
-        for job in j.get('items', []):
+        for job in jobs:
             name = job['metadata']['name']
             status_obj = job.get('status', {})
             spec = job.get('spec', {})
@@ -121,8 +155,8 @@ def get_jobs_pods(ns):
                         end = datetime.fromisoformat(end_str)
 
                     diff = end - start
-                    mins = int(diff.total_seconds() / 60)
-                    duration = f"{mins}m"
+                    total_seconds = diff.total_seconds()
+                    duration = format_duration(total_seconds)
                     if 'completionTime' not in status_obj:
                         duration += " (Run)"
                 except Exception:
@@ -139,7 +173,7 @@ def get_jobs_pods(ns):
 
             # Pods
             my_pods = []
-            for pod in p:
+            for pod in pods:
                 if pod['metadata']['name'].startswith(name + "-"):
                     p_status = pod['status']['phase']
                     my_pods.append(f"{pod['metadata']['name']} ({p_status})")
@@ -293,14 +327,23 @@ def generate_cluster_resources(quota):
 
 def main():
     parser = argparse.ArgumentParser(description="Kubernetes Monitor (nvitop style)")
-    parser.add_argument("namespace", help="Kubernetes Namespace")
+    parser.add_argument("namespace", nargs='?', default='default', help="Kubernetes Namespace")
+    parser.add_argument("--mock", action="store_true", help="Use mock data from mock_data.json")
     args = parser.parse_args()
+
+    mock_data = None
+    if args.mock:
+        mock_data = generate_mock_data()
+        if not mock_data:
+            print("Failed to load mock data. Exiting.")
+            return
 
     console = Console()
     layout = make_layout()
 
+    mode_str = "[bold yellow]MOCK MODE[/]" if args.mock else ""
     layout["header"].update(Panel(
-        f"Kubernetes Monitor - Namespace: [bold green]{args.namespace}[/]",
+        f"Kubernetes Monitor - Namespace: [bold green]{args.namespace}[/] {mode_str}",
         style="white on blue"))
     layout["footer"].update(Panel("Press 'q' or Ctrl+C to exit", style="dim"))
 
@@ -317,8 +360,8 @@ def main():
             fetch_interval = 2
             scroll_offset = 0
 
-            quota = get_quota(args.namespace)
-            jobs = get_jobs_pods(args.namespace)
+            quota = get_quota(args.namespace, use_mock=args.mock, mock_data=mock_data)
+            jobs = get_jobs_pods(args.namespace, use_mock=args.mock, mock_data=mock_data)
 
             while True:
                 # Input Handling - process all buffered input and use last nav key
@@ -369,8 +412,8 @@ def main():
 
                 now = time.time()
                 if now - last_fetch > fetch_interval:
-                    quota = get_quota(args.namespace)
-                    jobs = get_jobs_pods(args.namespace)
+                    quota = get_quota(args.namespace, use_mock=args.mock, mock_data=mock_data)
+                    jobs = get_jobs_pods(args.namespace, use_mock=args.mock, mock_data=mock_data)
                     last_fetch = now
 
                 jobs_title = f"Jobs ({len(jobs)})"
