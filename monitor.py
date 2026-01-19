@@ -127,7 +127,6 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None):
             spec = job.get('spec', {})
 
             # Status Logic
-            status = 'Unknown'
             active = status_obj.get('active', 0)
             succeeded = status_obj.get('succeeded', 0)
             failed = status_obj.get('failed', 0)
@@ -430,9 +429,6 @@ def main():
         )
         sys.exit(1)
 
-    if args.mock:
-        args.namespace = 'default'
-
     mock_data = None
     if args.mock:
         mock_data = generate_mock_data()
@@ -490,11 +486,11 @@ def main():
                         elif key_input == b'P':  # Down arrow on Windows
                             key = 'down'
                         else:
-                            decoded = key_input.decode('utf-8').lower()
+                            decoded = key_input.decode('utf-8', errors='ignore').lower()
                             if decoded == 'q':
                                 key = 'q'
 
-                if key and key.lower() == 'q':
+                if key == 'q':
                     break
 
                 cpu_total, cpu_per_core, mem, gpu = get_local_metrics()
