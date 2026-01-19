@@ -368,10 +368,6 @@ def print_help():
     )
     console.print("                 Useful for testing and development.")
     console.print(
-        "                 [dim]When using --mock, the namespace argument "
-        "is ignored.[/dim]"
-    )
-    console.print(
         "  [magenta]-V, --version[/magenta]  Show kubmonitor's version "
         "number.\n"
     )
