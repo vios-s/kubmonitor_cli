@@ -20,6 +20,7 @@ from rich.table import Table
 from rich.console import Console
 from rich import box
 from mock_data import generate_mock_data
+from version import __version__
 
 
 def format_duration(total_seconds):
@@ -337,11 +338,64 @@ def generate_cluster_resources(quota):
     return Panel(grid, title="Cluster Quota", border_style="blue")
 
 
+def print_help():
+    console = Console(force_terminal=True, legacy_windows=False)
+
+    console.print("\n[bold cyan]kubmonitor[/bold cyan] - Real-time Kubernetes dashboard combining cluster quotas and local metrics.\n", highlight=False)
+
+    console.print("[bold yellow]Usage:[/bold yellow]")
+    console.print("  [green]kubmonitor[/green] [cyan][[/cyan][dim]NAMESPACE[/dim][cyan]][/cyan] [cyan][[/cyan][magenta]--mock[/magenta][cyan]][/cyan] [cyan][[/cyan][magenta]--help[/magenta][cyan]][/cyan] [cyan][[/cyan][magenta]--version[/magenta][cyan]][/cyan]\n")
+
+    console.print("[bold yellow]Positional Arguments:[/bold yellow]")
+    console.print("  [cyan]NAMESPACE[/cyan]      Kubernetes namespace to monitor.")
+    console.print("                 [dim]Note: Cannot be used with --mock flag.[/dim]\n")
+
+    console.print("[bold yellow]Options:[/bold yellow]")
+    console.print("  [magenta]-h, --help[/magenta]     Show this help message.")
+    console.print("  [magenta]--mock[/magenta]         Use mock data instead of querying the actual Kubernetes cluster.")
+    console.print("                 Useful for testing and development.")
+    console.print("                 [dim]When using --mock, the namespace argument is ignored.[/dim]")
+    console.print("  [magenta]-V, --version[/magenta]  Show kubmonitor's version number.\n")
+
+    console.print("[bold yellow]Examples:[/bold yellow]")
+    console.print("  [dim]# Monitor the default namespace[/dim]")
+    console.print("  [green]kubmonitor[/green]\n")
+    console.print("  [dim]# Monitor a specific namespace[/dim]")
+    console.print("  [green]kubmonitor[/green] [cyan]my-namespace[/cyan]\n")
+    console.print("  [dim]# Use mock data for testing (no namespace needed)[/dim]")
+    console.print("  [green]kubmonitor[/green] [magenta]--mock[/magenta]\n")
+
+    console.print("[bold yellow]Keyboard Shortcuts:[/bold yellow]")
+    console.print("  [cyan]↑/↓[/cyan]            Navigate up and down")
+    console.print("  [cyan]q[/cyan]              Quit the application")
+    console.print("  [cyan]Ctrl+C[/cyan]         Force exit\n")
+
+    console.print("[dim]For more information, visit: https://github.com/vios-s/kubmonitor_cli[/dim]\n")
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Kubernetes Monitor (nvitop style)")
-    parser.add_argument("namespace", nargs='?', default='default', help="Kubernetes Namespace")
-    parser.add_argument("--mock", action="store_true", help="Use mock data from mock_data.json")
+    if '--help' in sys.argv or '-h' in sys.argv:
+        print_help()
+        sys.exit(0)
+    
+    parser = argparse.ArgumentParser(prog='kubmonitor', add_help=False)
+    parser.add_argument('namespace', nargs='?', default='default')
+    parser.add_argument('--mock', action='store_true')
+    parser.add_argument('--version', '-V', action='version', version=f'kubmonitor {__version__}')
+    
     args = parser.parse_args()
+
+    if args.mock and args.namespace != 'default':
+        console = Console()
+        console.print("\n[bold red]Error:[/bold red] Cannot specify a namespace when using [magenta]--mock[/magenta] flag.\n")
+        console.print("[dim]Mock mode uses generated test data and doesn't connect to a real cluster.[/dim]\n")
+        console.print("[yellow]Usage:[/yellow]")
+        console.print("  [green]kubmonitor --mock[/green]          [dim]# Use mock data[/dim]")
+        console.print("  [green]kubmonitor my-namespace[/green]   [dim]# Monitor real namespace[/dim]\n")
+        sys.exit(1)
+
+    if args.mock:
+        args.namespace = 'default'
 
     mock_data = None
     if args.mock:

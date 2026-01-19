@@ -47,6 +47,26 @@ pip install .
 
 ## 🎮 Usage
 
+### Getting Help
+
+View all available options and usage information:
+
+```bash
+kubmonitor --help
+# or
+kubmonitor -h
+```
+
+Check the version:
+
+```bash
+kubmonitor --version
+# or
+kubmonitor -V
+```
+
+### Monitor a Namespace
+
 Simply run the command followed by the target namespace:
 
 ```bash
@@ -59,26 +79,27 @@ kubmonitor <namespace>
 kubmonitor eidf098ns
 ```
 
+If no namespace is specified, it defaults to `default`:
+
+```bash
+kubmonitor
+```
+
 ### Mock Mode (Testing/Debug)
 
 For testing or debugging purposes without requiring access to a Kubernetes cluster, you can use the `--mock` flag to run KubMonitor with simulated data:
 
 ```bash
-kubmonitor <namespace> --mock
+kubmonitor --mock
 ```
 
-**Example:**
-
-```bash
-kubmonitor test-namespace --mock
-```
+**Note:** When using `--mock`, you cannot specify a namespace. Mock mode uses generated test data and doesn't connect to a real cluster.
 
 This will generate realistic mock data including:
 - Simulated resource quotas (CPU, Memory, GPU)
 - Mock Kubernetes jobs with various states (running, completed, failed)
 - Mock pods with realistic resource usage patterns
 - Generated timestamps and durations
-
 
 ### Keyboard Shortcuts
 

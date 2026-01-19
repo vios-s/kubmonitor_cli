@@ -1,8 +1,9 @@
 from setuptools import setup, find_packages
+from version import __version__
 
 setup(
     name="kubmonitor-cli",
-    version="0.1.0",
+    version=__version__,
     description="A rich CLI Kubernetes monitor",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
