@@ -1,14 +1,14 @@
 from setuptools import setup, find_packages
 
 version = {}
-with open("version.py") as f:
+with open("version.py", encoding="utf-8") as f:
     exec(f.read(), version)
 
 setup(
     name="kubmonitor-cli",
     version=version['__version__'],
     description="A rich CLI Kubernetes monitor",
-    long_description=open("README.md").read(),
+    long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     author="yyx",
     url="https://github.com/yyx/kubmonitor-cli",
