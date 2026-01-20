@@ -1,20 +1,28 @@
 from setuptools import setup, find_packages
-from version import __version__
+
+version = {}
+with open("version.py") as f:
+    exec(f.read(), version)
 
 setup(
     name="kubmonitor-cli",
-    version=__version__,
+    version=version['__version__'],
     description="A rich CLI Kubernetes monitor",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     author="yyx",
     url="https://github.com/yyx/kubmonitor-cli",
     packages=find_packages(),
-    py_modules=["monitor"],
+    py_modules=["monitor", "mock_data", "version"],
     install_requires=[
         "rich",
         "psutil"
     ],
+    extras_require={
+        "dev": [
+            "flake8",
+        ]
+    },
     entry_points={
         "console_scripts": [
             "kubmonitor=monitor:main",
