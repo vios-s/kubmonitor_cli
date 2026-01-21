@@ -108,20 +108,30 @@ def get_gpu_info(ns, use_mock=False, mock_data=None):
     if use_mock:
         return {
             'nodes': [
-                {'name': 'gpu-node-01', 'gpu_type': 'NVIDIA A100-SXM4-40GB', 'gpu_count': 4, 'allocated': 2},
-                {'name': 'gpu-node-02', 'gpu_type': 'NVIDIA A100-SXM4-40GB', 'gpu_count': 4, 'allocated': 0},
-                {'name': 'gpu-node-03', 'gpu_type': 'NVIDIA V100-SXM2-32GB', 'gpu_count': 8, 'allocated': 4},
+                {'name': 'gpu-node-01', 'gpu_type': 'H100-80GB', 'gpu_count': 8, 'allocated': 4},
+                {'name': 'gpu-node-02', 'gpu_type': 'H100-80GB', 'gpu_count': 8, 'allocated': 0},
+                {'name': 'gpu-node-03', 'gpu_type': 'A100-80GB', 'gpu_count': 8, 'allocated': 6},
+                {'name': 'gpu-node-04', 'gpu_type': 'A100-80GB', 'gpu_count': 8, 'allocated': 2},
+                {'name': 'gpu-node-05', 'gpu_type': 'A100-40GB', 'gpu_count': 4, 'allocated': 3},
             ],
-            'total_gpus': 16,
-            'allocated_gpus': 6,
-            'gpu_types': ['NVIDIA A100-SXM4-40GB', 'NVIDIA V100-SXM2-32GB']
+            'total_gpus': 36,
+            'allocated_gpus': 15,
+            'gpu_types': ['H100-80GB', 'A100-80GB', 'A100-40GB'],
+            'node_gpu_map': {
+                'gpu-node-01': 'H100-80GB',
+                'gpu-node-02': 'H100-80GB', 
+                'gpu-node-03': 'A100-80GB',
+                'gpu-node-04': 'A100-80GB',
+                'gpu-node-05': 'A100-40GB',
+            }
         }
     
     gpu_info = {
         'nodes': [],
         'total_gpus': 0,
         'allocated_gpus': 0,
-        'gpu_types': set()
+        'gpu_types': set(),
+        'node_gpu_map': {}  # Maps node name -> GPU type
     }
     
     # Get nodes with GPU capacity
@@ -146,7 +156,7 @@ def get_gpu_info(ns, use_mock=False, mock_data=None):
             
             if gpu_count > 0:
                 # Try to get GPU type from common label patterns
-                gpu_type = 'Unknown GPU'
+                gpu_type = 'GPU'
                 gpu_label_keys = [
                     'nvidia.com/gpu.product',
                     'gpu.nvidia.com/product', 
@@ -156,7 +166,9 @@ def get_gpu_info(ns, use_mock=False, mock_data=None):
                 ]
                 for label_key in gpu_label_keys:
                     if label_key in labels:
-                        gpu_type = labels[label_key].replace('-', ' ')
+                        raw_type = labels[label_key].replace('-', ' ')
+                        # Shorten common GPU names
+                        gpu_type = _shorten_gpu_name(raw_type)
                         break
                 
                 gpu_info['nodes'].append({
@@ -167,6 +179,7 @@ def get_gpu_info(ns, use_mock=False, mock_data=None):
                 })
                 gpu_info['total_gpus'] += gpu_count
                 gpu_info['gpu_types'].add(gpu_type)
+                gpu_info['node_gpu_map'][node_name] = gpu_type
     except:
         pass
     
@@ -199,7 +212,48 @@ def get_gpu_info(ns, use_mock=False, mock_data=None):
     return gpu_info
 
 
-def get_jobs_pods(ns, use_mock=False, mock_data=None):
+def _shorten_gpu_name(name):
+    """Shorten GPU names for display."""
+    name = name.upper()
+    # Common patterns to shorten
+    if 'A100' in name:
+        if '80G' in name:
+            return 'A100-80GB'
+        elif '40G' in name:
+            return 'A100-40GB'
+        return 'A100'
+    elif 'H100' in name:
+        if '80G' in name:
+            return 'H100-80GB'
+        return 'H100'
+    elif 'V100' in name:
+        if '32G' in name:
+            return 'V100-32GB'
+        elif '16G' in name:
+            return 'V100-16GB'
+        return 'V100'
+    elif 'T4' in name:
+        return 'T4'
+    elif 'P100' in name:
+        return 'P100'
+    elif 'P40' in name:
+        return 'P40'
+    elif 'L40' in name:
+        return 'L40S' if 'L40S' in name else 'L40'
+    elif 'RTX' in name:
+        # Extract RTX model number
+        import re
+        match = re.search(r'RTX\s*(\d+)', name)
+        if match:
+            return f'RTX {match.group(1)}'
+        return 'RTX'
+    # Return shortened version if too long
+    if len(name) > 12:
+        return name[:10] + '..'
+    return name
+
+
+def get_jobs_pods(ns, use_mock=False, mock_data=None, gpu_info=None):
     if use_mock and mock_data:
         jobs = mock_data['jobs']['items']
         pods = mock_data['pods']['items']
@@ -209,12 +263,23 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None):
 
         try:
             j = json.loads(jobs_json)
-            jobs = j.get('items', [])
+            jobs = j.get('items', [])  
             p = json.loads(pods_json)
             pods = p.get('items', [])
         except Exception:
             jobs = []
             pods = []
+    
+    # Build node_gpu_map from gpu_info or mock
+    node_gpu_map = {}
+    if gpu_info:
+        node_gpu_map = gpu_info.get('node_gpu_map', {})
+    elif use_mock:
+        node_gpu_map = {
+            'gpu-node-01': 'A100-40GB',
+            'gpu-node-02': 'A100-40GB', 
+            'gpu-node-03': 'V100-32GB',
+        }
 
     jobs_data = []
     try:
@@ -259,11 +324,13 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None):
                 except Exception:
                     pass
 
-            # User
+            # User and GPU info
             user = "Unknown"
             gpu_request = 0
+            gpu_type_from_selector = None
             try:
-                containers = spec['template']['spec']['containers']
+                pod_spec = spec['template']['spec']
+                containers = pod_spec['containers']
                 img = containers[0]['image']
                 parts = img.split('/')
                 user = parts[0] if len(parts) > 1 else img.split(':')[0]
@@ -277,15 +344,37 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None):
                                 gpu_request += int(value)
                             except:
                                 pass
+                
+                # Get GPU type from nodeSelector (most reliable source)
+                node_selector = pod_spec.get('nodeSelector', {})
+                gpu_selector_keys = [
+                    'nvidia.com/gpu.product',
+                    'gpu.nvidia.com/product',
+                    'accelerator',
+                    'nvidia.com/gpu.machine',
+                ]
+                for key in gpu_selector_keys:
+                    if key in node_selector:
+                        gpu_type_from_selector = _shorten_gpu_name(node_selector[key])
+                        break
             except:
                 pass
 
-            # Pods
+            # Pods - track node and GPU type
             my_pods = []
+            job_gpu_type = gpu_type_from_selector  # Prefer nodeSelector (available before scheduling)
             for pod in pods:
                 if pod['metadata']['name'].startswith(name + "-"):
                     p_status = pod['status']['phase']
-                    my_pods.append(f"{pod['metadata']['name']} ({p_status})")
+                    p_node = pod['spec'].get('nodeName', '')
+                    my_pods.append({
+                        'name': pod['metadata']['name'],
+                        'status': p_status,
+                        'node': p_node
+                    })
+                    # Fallback: get GPU type from node if not in nodeSelector
+                    if gpu_request > 0 and not job_gpu_type and p_node and p_node in node_gpu_map:
+                        job_gpu_type = node_gpu_map[p_node]
 
             jobs_data.append({
                 'name': name,
@@ -294,7 +383,8 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None):
                 'completions': f"{succeeded}/{req}",
                 'duration': duration,
                 'pods': my_pods,
-                'gpu': gpu_request
+                'gpu': gpu_request,
+                'gpu_type': job_gpu_type  # The actual GPU type being used
             })
 
     except Exception:
@@ -427,8 +517,16 @@ def build_row_index(jobs):
         else:
             status_style = "yellow"
         
-        # Format GPU display
-        gpu_display = str(job.get('gpu', 0)) if job.get('gpu', 0) > 0 else "-"
+        # Format GPU display - show count and type if available
+        gpu_count = job.get('gpu', 0)
+        gpu_type = job.get('gpu_type')
+        if gpu_count > 0:
+            if gpu_type:
+                gpu_display = f"{gpu_count}x {gpu_type}"
+            else:
+                gpu_display = str(gpu_count)
+        else:
+            gpu_display = "-"
 
         all_rows.append({
             'type': 'job',
@@ -442,9 +540,15 @@ def build_row_index(jobs):
             'pod_name': None  # Jobs don't have pod_name for log viewing
         })
 
-        for i, pod_str in enumerate(job['pods']):
-            p_name = pod_str.split(' (')[0]
-            p_status = pod_str.split(' (')[1].rstrip(')')
+        for i, pod_info in enumerate(job['pods']):
+            # Handle both old format (string) and new format (dict)
+            if isinstance(pod_info, dict):
+                p_name = pod_info['name']
+                p_status = pod_info['status']
+            else:
+                # Legacy string format: "pod-name (Status)"
+                p_name = pod_info.split(' (')[0]
+                p_status = pod_info.split(' (')[1].rstrip(')')
 
             is_last = (i == len(job['pods']) - 1)
             prefix = "└── " if is_last else "├── "
@@ -514,16 +618,38 @@ def generate_cluster_resources(quota, gpu_info=None):
     grid.add_row("[bold]MEM[/bold]", quota['mem']['str'])
     grid.add_row("[bold]GPU[/bold]", quota['gpu']['str'])
     
-    # Add GPU type info if available
-    if gpu_info and gpu_info.get('gpu_types'):
+    # Add detailed GPU info by type
+    if gpu_info and gpu_info.get('nodes'):
         grid.add_row("", "")  # Spacer
-        grid.add_row("[dim]GPU Types:[/dim]", "")
-        for gpu_type in gpu_info['gpu_types'][:3]:  # Show max 3 types
-            # Shorten long names
-            short_name = gpu_type
-            if len(short_name) > 20:
-                short_name = short_name[:18] + "..."
-            grid.add_row(f"  [cyan]{short_name}[/cyan]", "")
+        
+        # Aggregate by GPU type
+        gpu_by_type = {}
+        for node in gpu_info['nodes']:
+            gpu_type = node['gpu_type']
+            if gpu_type not in gpu_by_type:
+                gpu_by_type[gpu_type] = {'total': 0, 'allocated': 0}
+            gpu_by_type[gpu_type]['total'] += node['gpu_count']
+            gpu_by_type[gpu_type]['allocated'] += node['allocated']
+        
+        # Display each GPU type with usage
+        for gpu_type, counts in gpu_by_type.items():
+            used = counts['allocated']
+            total = counts['total']
+            # Color based on utilization
+            if total > 0:
+                pct = (used / total) * 100
+                if pct >= 80:
+                    color = "red"
+                elif pct >= 50:
+                    color = "yellow"
+                else:
+                    color = "green"
+            else:
+                color = "dim"
+            grid.add_row(
+                f"  [cyan]{gpu_type}[/cyan]",
+                f"[{color}]{used}/{total}[/{color}]"
+            )
 
     return Panel(grid, title="Cluster Quota", border_style="blue")
 
@@ -696,9 +822,9 @@ def main():
             log_scroll_offset = 0
 
             quota = get_quota(args.namespace, use_mock=args.mock, mock_data=mock_data)
-            jobs = get_jobs_pods(args.namespace, use_mock=args.mock,
-                                 mock_data=mock_data)
             gpu_info = get_gpu_info(args.namespace, use_mock=args.mock, mock_data=mock_data)
+            jobs = get_jobs_pods(args.namespace, use_mock=args.mock,
+                                 mock_data=mock_data, gpu_info=gpu_info)
 
             while True:
                 # Input Handling - process all buffered input and use last nav key
@@ -834,10 +960,10 @@ def main():
                     if now - last_fetch > fetch_interval:
                         quota = get_quota(args.namespace, use_mock=args.mock,
                                           mock_data=mock_data)
-                        jobs = get_jobs_pods(args.namespace, use_mock=args.mock,
-                                             mock_data=mock_data)
                         gpu_info = get_gpu_info(args.namespace, use_mock=args.mock,
                                                 mock_data=mock_data)
+                        jobs = get_jobs_pods(args.namespace, use_mock=args.mock,
+                                             mock_data=mock_data, gpu_info=gpu_info)
                         last_fetch = now
 
                     jobs_title = f"Jobs ({len(jobs)})"

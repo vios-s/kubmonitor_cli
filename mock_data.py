@@ -248,15 +248,40 @@ def _build_jobs_items(jobs_data):
     for job_info in jobs_data:
         # Build resources with GPU if specified
         resources = {}
-        if job_info.get("gpu", 0) > 0:
+        node_selector = {}
+        gpu_count = job_info.get("gpu", 0)
+        
+        if gpu_count > 0:
             resources = {
                 "requests": {
-                    "nvidia.com/gpu": str(job_info["gpu"])
+                    "cpu": "20",
+                    "memory": "128Gi",
+                    "nvidia.com/gpu": str(gpu_count)
                 },
                 "limits": {
-                    "nvidia.com/gpu": str(job_info["gpu"])
+                    "cpu": "20", 
+                    "memory": "128Gi",
+                    "nvidia.com/gpu": str(gpu_count)
                 }
             }
+            # Assign GPU type based on job requirements (like real jobs do)
+            if gpu_count >= 4:
+                node_selector = {"nvidia.com/gpu.product": "NVIDIA-H100-80GB-HBM3"}
+            elif gpu_count >= 2:
+                node_selector = {"nvidia.com/gpu.product": "NVIDIA-A100-SXM4-80GB"}
+            else:
+                node_selector = {"nvidia.com/gpu.product": "NVIDIA-A100-SXM4-40GB"}
+        
+        pod_spec = {
+            "containers": [
+                {
+                    "image": job_info["image"],
+                    "resources": resources
+                }
+            ]
+        }
+        if node_selector:
+            pod_spec["nodeSelector"] = node_selector
         
         job = {
             "metadata": {"name": job_info["name"]},
@@ -269,14 +294,7 @@ def _build_jobs_items(jobs_data):
             "spec": {
                 "completions": 1,
                 "template": {
-                    "spec": {
-                        "containers": [
-                            {
-                                "image": job_info["image"],
-                                "resources": resources
-                            }
-                        ]
-                    }
+                    "spec": pod_spec
                 }
             }
         }
@@ -296,6 +314,9 @@ def _generate_pod_suffix():
 
 def _generate_pods_items(jobs_data):
     pods_items = []
+    # GPU node assignment based on job GPU requirements
+    gpu_nodes = ['gpu-node-01', 'gpu-node-02', 'gpu-node-03']
+    
     for job_info in jobs_data:
         # ~60% get 1 pod, ~30% get 2 pods, ~10% get 3 pods
         rand = random.random()
@@ -307,11 +328,27 @@ def _generate_pods_items(jobs_data):
             phase = "Succeeded"
         else:
             phase = "Failed"
+        
+        # Assign node based on GPU requirements
+        gpu_req = job_info.get("gpu", 0)
+        if gpu_req > 0:
+            # Assign to a GPU node (prefer A100 for larger jobs)
+            if gpu_req >= 4:
+                node_name = 'gpu-node-01'  # A100
+            elif gpu_req >= 2:
+                node_name = random.choice(['gpu-node-01', 'gpu-node-03'])  # A100 or V100
+            else:
+                node_name = random.choice(gpu_nodes)
+        else:
+            node_name = f"cpu-node-{random.randint(1, 5):02d}"
 
         for _ in range(num_pods):
             pods_items.append({
                 "metadata": {
                     "name": f"{job_info['name']}-{_generate_pod_suffix()}"
+                },
+                "spec": {
+                    "nodeName": node_name
                 },
                 "status": {
                     "phase": phase
