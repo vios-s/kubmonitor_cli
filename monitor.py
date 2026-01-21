@@ -203,7 +203,7 @@ def get_gpu_info(ns, use_mock=False, mock_data=None):
                             for node in gpu_info['nodes']:
                                 if node['name'] == node_name:
                                     node['allocated'] += gpu_req
-                        except:
+                        except (ValueError, TypeError):
                             pass
     except:
         pass
@@ -342,7 +342,7 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None, gpu_info=None):
                         if 'gpu' in key.lower():
                             try:
                                 gpu_request += int(value)
-                            except:
+                            except (ValueError, TypeError):
                                 pass
                 
                 # Get GPU type from nodeSelector (most reliable source)
@@ -666,13 +666,14 @@ def generate_log_viewer(logs, pod_name, scroll_offset=0, max_lines=None):
     # Color-code log lines based on level
     formatted_lines = []
     for line in visible_lines:
-        if 'ERROR' in line or 'error' in line:
+        line_upper = line.upper()
+        if 'ERROR' in line_upper:
             formatted_lines.append(f"[red]{line}[/red]")
-        elif 'WARNING' in line or 'WARN' in line or 'warning' in line:
+        elif 'WARNING' in line_upper or 'WARN' in line_upper:
             formatted_lines.append(f"[yellow]{line}[/yellow]")
-        elif 'DEBUG' in line or 'debug' in line:
+        elif 'DEBUG' in line_upper:
             formatted_lines.append(f"[dim]{line}[/dim]")
-        elif 'INFO' in line or 'info' in line:
+        elif 'INFO' in line_upper:
             formatted_lines.append(f"[green]{line}[/green]")
         else:
             formatted_lines.append(line)
@@ -908,11 +909,20 @@ def main():
                     elif key == 'down':
                         log_scroll_offset = min(max_log_scroll, log_scroll_offset + 1)
                     elif key == 'r':
-                        # Refresh logs
+                        # Manual refresh logs
                         current_logs = get_pod_logs(
                             args.namespace, current_pod_name,
                             tail_lines=500, use_mock=args.mock
                         )
+                    
+                    # Auto-refresh logs periodically
+                    now = time.time()
+                    if now - last_fetch > fetch_interval:
+                        current_logs = get_pod_logs(
+                            args.namespace, current_pod_name,
+                            tail_lines=500, use_mock=args.mock
+                        )
+                        last_fetch = now
                     
                     # Update layout with log viewer
                     layout["cluster_resources"].update(generate_cluster_resources(quota, gpu_info))
@@ -924,7 +934,7 @@ def main():
                         max_lines=max_visible_rows
                     ))
                     layout["footer"].update(Panel(
-                        f"[cyan]↑/↓[/cyan] Scroll  [cyan]r[/cyan] Refresh  [cyan]ESC/Backspace[/cyan] Close  Viewing: [bold]{current_pod_name}[/bold]",
+                        f"[cyan]↑/↓[/cyan] Scroll  [cyan]r[/cyan] Refresh  [cyan]ESC/Backspace[/cyan] Close  [dim](auto-refresh {fetch_interval}s)[/dim]  Viewing: [bold]{current_pod_name}[/bold]",
                         style="dim"))
                 else:
                     # Normal job/pod list mode
