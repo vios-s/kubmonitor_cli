@@ -681,8 +681,15 @@ def generate_log_viewer(logs, pod_name, scroll_offset=0, max_lines=None):
     log_text = "\n".join(formatted_lines) if formatted_lines else "No logs available"
     
     # Create scroll indicator
-    total_lines = len(lines)
-    scroll_info = f" ({scroll_offset + 1}-{min(scroll_offset + (max_lines or total_lines), total_lines)}/{total_lines})"
+    has_real_logs = bool(logs and logs.strip())
+    if not has_real_logs:
+        total_lines = 0
+        scroll_info = " (0-0/0)"
+    else:
+        total_lines = len(lines)
+        start_line = min(scroll_offset + 1, total_lines)
+        end_line = min(scroll_offset + (max_lines or total_lines), total_lines)
+        scroll_info = f" ({start_line}-{end_line}/{total_lines})"
     
     return Panel(
         log_text,
