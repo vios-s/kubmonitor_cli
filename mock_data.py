@@ -478,5 +478,5 @@ def generate_mock_data():
         },
         "gpu_info": gpu_info,
         "logs": mock_logs,
-        "node_gpu_map": gpu_info['node_gpu_map'] # Convenience top-level access
+        "node_gpu_map": gpu_info['node_gpu_map']  # Convenience top-level access
     }

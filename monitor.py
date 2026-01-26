@@ -557,7 +557,7 @@ def generate_table(jobs, offset=0, max_rows=None, selected_index=0):
         # Apply selection highlighting
         if is_selected:
             name_display = f"[reverse]{row['display_name']}[/reverse]"
-            # Add indicator for pods that can show logs without breaking tree indentation
+            # Add indicator for pods that can show logs without breaking layout
             if row['type'] == 'pod':
                 name_display = f"[reverse]{row['display_name']} ▶[/reverse]"
         else:
@@ -656,7 +656,7 @@ def generate_log_viewer(logs, pod_name, scroll_offset=0, max_lines=None):
         start_line = min(scroll_offset + 1, total_lines)
         end_line = min(scroll_offset + (max_lines or total_lines), total_lines)
         scroll_info = f" ({start_line}-{end_line}/{total_lines})"
-    
+
     return Panel(
         log_text,
         title=f"Logs: {pod_name}{scroll_info}",
@@ -920,7 +920,6 @@ def main():
                     # Normal job/pod list mode
                     # Calculate max scroll position with buffer to ensure
                     # last job's pods are visible
-                    max_scroll = max(0, total_rows - max_visible_rows + 3)
 
                     # Navigation
                     if key == 'up':
