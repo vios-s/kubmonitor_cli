@@ -274,10 +274,11 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None, gpu_info=None):
     if gpu_info:
         node_gpu_map = gpu_info.get('node_gpu_map', {})
     elif use_mock:
+        # Fallback mock mapping should match get_gpu_info's mock GPU types
         node_gpu_map = {
-            'gpu-node-01': 'A100-40GB',
-            'gpu-node-02': 'A100-40GB', 
-            'gpu-node-03': 'V100-32GB',
+            'gpu-node-01': 'H100-80GB',
+            'gpu-node-02': 'A100-80GB',
+            'gpu-node-03': 'A100-40GB',
         }
 
     jobs_data = []
