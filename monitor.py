@@ -1,3 +1,4 @@
+import re
 import sys
 import json
 import time
@@ -102,29 +103,26 @@ def get_quota(ns, use_mock=False, mock_data=None):
     return data
 
 
-def get_gpu_info(ns, use_mock=False, mock_data=None):
+def get_pods_list(ns, use_mock=False, mock_data=None):
+    """Fetch all pods in the namespace."""
+    if use_mock:
+        return mock_data['pods']['items'] if mock_data else []
+
+    pods_json = run_cmd(f"kubectl -n {ns} get pods -o json")
+    try:
+        return json.loads(pods_json).get('items', [])
+    except:
+        return []
+
+
+def get_gpu_info(ns, pods=None, use_mock=False, mock_data=None):
     """Get GPU information from cluster nodes and pods."""
     if use_mock:
-        return {
-            'nodes': [
-                {'name': 'gpu-node-01', 'gpu_type': 'H100-80GB', 'gpu_count': 8, 'allocated': 4},
-                {'name': 'gpu-node-02', 'gpu_type': 'H100-80GB', 'gpu_count': 8, 'allocated': 0},
-                {'name': 'gpu-node-03', 'gpu_type': 'A100-80GB', 'gpu_count': 8, 'allocated': 6},
-                {'name': 'gpu-node-04', 'gpu_type': 'A100-80GB', 'gpu_count': 8, 'allocated': 2},
-                {'name': 'gpu-node-05', 'gpu_type': 'A100-40GB', 'gpu_count': 4, 'allocated': 3},
-            ],
-            'total_gpus': 36,
-            'allocated_gpus': 15,
-            'gpu_types': ['H100-80GB', 'A100-80GB', 'A100-40GB'],
-            'node_gpu_map': {
-                'gpu-node-01': 'H100-80GB',
-                'gpu-node-02': 'H100-80GB', 
-                'gpu-node-03': 'A100-80GB',
-                'gpu-node-04': 'A100-80GB',
-                'gpu-node-05': 'A100-40GB',
-            }
-        }
-    
+        return mock_data.get('gpu_info', {}) if mock_data else {}
+
+    if pods is None:
+        pods = get_pods_list(ns, use_mock, mock_data)
+
     gpu_info = {
         'nodes': [],
         'total_gpus': 0,
@@ -132,7 +130,7 @@ def get_gpu_info(ns, use_mock=False, mock_data=None):
         'gpu_types': set(),
         'node_gpu_map': {}  # Maps node name -> GPU type
     }
-    
+
     # Get nodes with GPU capacity
     nodes_json = run_cmd("kubectl get nodes -o json")
     try:
@@ -141,24 +139,23 @@ def get_gpu_info(ns, use_mock=False, mock_data=None):
             node_name = node['metadata']['name']
             labels = node['metadata'].get('labels', {})
             capacity = node.get('status', {}).get('capacity', {})
-            allocatable = node.get('status', {}).get('allocatable', {})
-            
+
             # Check for NVIDIA GPUs
             gpu_count = 0
             for key in capacity:
                 if 'gpu' in key.lower():
                     try:
                         gpu_count = int(capacity[key])
-                    except:
+                    except (ValueError, TypeError):
                         pass
                     break
-            
+
             if gpu_count > 0:
                 # Try to get GPU type from common label patterns
                 gpu_type = 'GPU'
                 gpu_label_keys = [
                     'nvidia.com/gpu.product',
-                    'gpu.nvidia.com/product', 
+                    'gpu.nvidia.com/product',
                     'accelerator',
                     'nvidia.com/gpu.machine',
                     'node.kubernetes.io/instance-type'
@@ -169,7 +166,7 @@ def get_gpu_info(ns, use_mock=False, mock_data=None):
                         # Shorten common GPU names
                         gpu_type = _shorten_gpu_name(raw_type)
                         break
-                
+
                 gpu_info['nodes'].append({
                     'name': node_name,
                     'gpu_type': gpu_type,
@@ -181,11 +178,9 @@ def get_gpu_info(ns, use_mock=False, mock_data=None):
                 gpu_info['node_gpu_map'][node_name] = gpu_type
     except:
         pass
-    
+
     # Get GPU allocation from pods
-    pods_json = run_cmd(f"kubectl get pods --all-namespaces -o json")
     try:
-        pods = json.loads(pods_json).get('items', [])
         for pod in pods:
             if pod['status'].get('phase') not in ['Running', 'Pending']:
                 continue
@@ -205,8 +200,10 @@ def get_gpu_info(ns, use_mock=False, mock_data=None):
                         except (ValueError, TypeError):
                             pass
     except:
+        # Intentionally ignore errors when parsing pod GPU allocations;
+        # if this fails, we proceed with zero/partial allocation data.
         pass
-    
+
     gpu_info['gpu_types'] = list(gpu_info['gpu_types'])
     return gpu_info
 
@@ -241,7 +238,7 @@ def _shorten_gpu_name(name):
         return 'L40S' if 'L40S' in name else 'L40'
     elif 'RTX' in name:
         # Extract RTX model number
-        import re
+
         match = re.search(r'RTX\s*(\d+)', name)
         if match:
             return f'RTX {match.group(1)}'
@@ -252,34 +249,29 @@ def _shorten_gpu_name(name):
     return name
 
 
-def get_jobs_pods(ns, use_mock=False, mock_data=None, gpu_info=None):
+def get_jobs_pods(ns, pods=None, use_mock=False, mock_data=None, gpu_info=None):
     if use_mock and mock_data:
         jobs = mock_data['jobs']['items']
-        pods = mock_data['pods']['items']
+        if pods is None:
+            pods = mock_data['pods']['items']
     else:
         jobs_json = run_cmd(f"kubectl -n {ns} get jobs -o json")
-        pods_json = run_cmd(f"kubectl -n {ns} get pods -o json")
+
+        if pods is None:
+            pods = get_pods_list(ns)
 
         try:
             j = json.loads(jobs_json)
-            jobs = j.get('items', [])  
-            p = json.loads(pods_json)
-            pods = p.get('items', [])
+            jobs = j.get('items', [])
         except Exception:
             jobs = []
-            pods = []
-    
+
     # Build node_gpu_map from gpu_info or mock
     node_gpu_map = {}
     if gpu_info:
         node_gpu_map = gpu_info.get('node_gpu_map', {})
-    elif use_mock:
-        # Fallback mock mapping should match get_gpu_info's mock GPU types
-        node_gpu_map = {
-            'gpu-node-01': 'H100-80GB',
-            'gpu-node-02': 'A100-80GB',
-            'gpu-node-03': 'A100-40GB',
-        }
+    elif use_mock and mock_data:
+        node_gpu_map = mock_data.get('node_gpu_map', {})
 
     jobs_data = []
     try:
@@ -334,7 +326,7 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None, gpu_info=None):
                 img = containers[0]['image']
                 parts = img.split('/')
                 user = parts[0] if len(parts) > 1 else img.split(':')[0]
-                
+
                 # Get GPU requests
                 for container in containers:
                     resources = container.get('resources', {}).get('requests', {})
@@ -343,8 +335,9 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None, gpu_info=None):
                             try:
                                 gpu_request += int(value)
                             except (ValueError, TypeError):
+                                # Intentionally ignore bad GPU request values.
                                 pass
-                
+
                 # Get GPU type from nodeSelector (most reliable source)
                 node_selector = pod_spec.get('nodeSelector', {})
                 gpu_selector_keys = [
@@ -362,7 +355,8 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None, gpu_info=None):
 
             # Pods - track node and GPU type
             my_pods = []
-            job_gpu_type = gpu_type_from_selector  # Prefer nodeSelector (available before scheduling)
+            # Prefer nodeSelector (available before scheduling)
+            job_gpu_type = gpu_type_from_selector
             for pod in pods:
                 if pod['metadata']['name'].startswith(name + "-"):
                     p_status = pod['status']['phase']
@@ -373,7 +367,8 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None, gpu_info=None):
                         'node': p_node
                     })
                     # Fallback: get GPU type from node if not in nodeSelector
-                    if gpu_request > 0 and not job_gpu_type and p_node and p_node in node_gpu_map:
+                    if (gpu_request > 0 and not job_gpu_type and
+                            p_node and p_node in node_gpu_map):
                         job_gpu_type = node_gpu_map[p_node]
 
             jobs_data.append({
@@ -393,43 +388,14 @@ def get_jobs_pods(ns, use_mock=False, mock_data=None, gpu_info=None):
     return jobs_data
 
 
-def get_pod_logs(ns, pod_name, tail_lines=100, use_mock=False):
+def get_pod_logs(ns, pod_name, tail_lines=100, use_mock=False, mock_data=None):
     """Fetch logs for a specific pod."""
     if use_mock:
-        # Generate mock log data
-        mock_logs = []
-        import random
-        log_messages = [
-            "INFO: Starting application...",
-            "INFO: Loading configuration from /etc/config/app.yaml",
-            "INFO: Connecting to database...",
-            "INFO: Database connection established",
-            "INFO: Initializing worker threads...",
-            "DEBUG: Worker pool size: 4",
-            "INFO: Processing batch 1/10",
-            "INFO: Processing batch 2/10",
-            "WARNING: High memory usage detected (85%)",
-            "INFO: Processing batch 3/10",
-            "INFO: Processing batch 4/10",
-            "DEBUG: Cache hit ratio: 0.87",
-            "INFO: Processing batch 5/10",
-            "ERROR: Failed to process item #42: timeout",
-            "INFO: Retrying item #42...",
-            "INFO: Processing batch 6/10",
-            "INFO: Processing batch 7/10",
-            "INFO: Processing batch 8/10",
-            "DEBUG: Checkpoint saved",
-            "INFO: Processing batch 9/10",
-            "INFO: Processing batch 10/10",
-            "INFO: All batches completed successfully",
-            "INFO: Cleaning up resources...",
-            "INFO: Application finished",
-        ]
-        for i, msg in enumerate(log_messages[:tail_lines]):
-            timestamp = f"2026-01-21T10:{i:02d}:00Z"
-            mock_logs.append(f"{timestamp} {msg}")
-        return "\n".join(mock_logs)
-    
+        if mock_data and 'logs' in mock_data:
+            return mock_data['logs']
+        # Fallback if no mock_data provided
+        return "Mock logs not available"
+
     cmd = f"kubectl -n {ns} logs {pod_name} --tail={tail_lines}"
     return run_cmd(cmd)
 
@@ -516,7 +482,7 @@ def build_row_index(jobs):
             status_style = "red"
         else:
             status_style = "yellow"
-        
+
         # Format GPU display - show count and type if available
         gpu_count = job.get('gpu', 0)
         gpu_type = job.get('gpu_type')
@@ -587,7 +553,7 @@ def generate_table(jobs, offset=0, max_rows=None, selected_index=0):
     for i, row in enumerate(visible_rows):
         actual_index = offset + i
         is_selected = (actual_index == selected_index)
-        
+
         # Apply selection highlighting
         if is_selected:
             name_display = f"[reverse]{row['display_name']}[/reverse]"
@@ -596,7 +562,7 @@ def generate_table(jobs, offset=0, max_rows=None, selected_index=0):
                 name_display = f"[reverse]{row['display_name']} ▶[/reverse]"
         else:
             name_display = row['display_name']
-        
+
         table.add_row(
             name_display,
             row['user'],
@@ -617,11 +583,11 @@ def generate_cluster_resources(quota, gpu_info=None):
     grid.add_row("[bold]CPU[/bold]", quota['cpu']['str'])
     grid.add_row("[bold]MEM[/bold]", quota['mem']['str'])
     grid.add_row("[bold]GPU[/bold]", quota['gpu']['str'])
-    
+
     # Add detailed GPU info by type
     if gpu_info and gpu_info.get('nodes'):
         grid.add_row("", "")  # Spacer
-        
+
         # Aggregate by GPU type
         gpu_by_type = {}
         for node in gpu_info['nodes']:
@@ -630,7 +596,7 @@ def generate_cluster_resources(quota, gpu_info=None):
                 gpu_by_type[gpu_type] = {'total': 0, 'allocated': 0}
             gpu_by_type[gpu_type]['total'] += node['gpu_count']
             gpu_by_type[gpu_type]['allocated'] += node['allocated']
-        
+
         # Display each GPU type with usage
         for gpu_type, counts in gpu_by_type.items():
             used = counts['allocated']
@@ -657,12 +623,12 @@ def generate_cluster_resources(quota, gpu_info=None):
 def generate_log_viewer(logs, pod_name, scroll_offset=0, max_lines=None):
     """Generate a log viewer panel for a specific pod."""
     lines = logs.split('\n') if logs else ["No logs available"]
-    
+
     # Apply scroll offset
     visible_lines = lines[scroll_offset:]
     if max_lines:
         visible_lines = visible_lines[:max_lines]
-    
+
     # Color-code log lines based on level
     formatted_lines = []
     for line in visible_lines:
@@ -677,9 +643,9 @@ def generate_log_viewer(logs, pod_name, scroll_offset=0, max_lines=None):
             formatted_lines.append(f"[green]{line}[/green]")
         else:
             formatted_lines.append(line)
-    
+
     log_text = "\n".join(formatted_lines) if formatted_lines else "No logs available"
-    
+
     # Create scroll indicator
     has_real_logs = bool(logs and logs.strip())
     if not has_real_logs:
@@ -822,16 +788,20 @@ def main():
             fetch_interval = 2
             scroll_offset = 0
             selected_index = 0  # Track selected row
-            
+
             # Log viewer state
             viewing_logs = False
             current_logs = ""
             current_pod_name = ""
             log_scroll_offset = 0
 
-            quota = get_quota(args.namespace, use_mock=args.mock, mock_data=mock_data)
-            gpu_info = get_gpu_info(args.namespace, use_mock=args.mock, mock_data=mock_data)
-            jobs = get_jobs_pods(args.namespace, use_mock=args.mock,
+            pods = get_pods_list(args.namespace, use_mock=args.mock,
+                                 mock_data=mock_data)
+            quota = get_quota(args.namespace, use_mock=args.mock,
+                              mock_data=mock_data)
+            gpu_info = get_gpu_info(args.namespace, pods=pods,
+                                    use_mock=args.mock, mock_data=mock_data)
+            jobs = get_jobs_pods(args.namespace, pods=pods, use_mock=args.mock,
                                  mock_data=mock_data, gpu_info=gpu_info)
 
             while True:
@@ -868,10 +838,6 @@ def main():
                                 key = 'up'
                             elif key_input == b'P':  # Down arrow on Windows
                                 key = 'down'
-                        elif key_input == b'H':  # Up arrow on Windows (alternate)
-                            key = 'up'
-                        elif key_input == b'P':  # Down arrow on Windows (alternate)
-                            key = 'down'
                         elif key_input == b'\r':  # Enter key
                             key = 'enter'
                         elif key_input == b'\x1b':  # Escape key
@@ -905,7 +871,7 @@ def main():
                     # Log viewer mode
                     log_lines = current_logs.split('\n') if current_logs else []
                     max_log_scroll = max(0, len(log_lines) - max_visible_rows + 5)
-                    
+
                     if key == 'escape' or key == 'backspace' or key == 'q':
                         viewing_logs = False
                         current_logs = ""
@@ -919,29 +885,36 @@ def main():
                         # Manual refresh logs
                         current_logs = get_pod_logs(
                             args.namespace, current_pod_name,
-                            tail_lines=500, use_mock=args.mock
+                            tail_lines=500, use_mock=args.mock,
+                            mock_data=mock_data
                         )
-                    
+
                     # Auto-refresh logs periodically
                     now = time.time()
                     if now - last_fetch > fetch_interval:
                         current_logs = get_pod_logs(
                             args.namespace, current_pod_name,
-                            tail_lines=500, use_mock=args.mock
+                            tail_lines=500, use_mock=args.mock,
+                            mock_data=mock_data
                         )
                         last_fetch = now
-                    
+
                     # Update layout with log viewer
-                    layout["cluster_resources"].update(generate_cluster_resources(quota, gpu_info))
+                    layout["cluster_resources"].update(
+                        generate_cluster_resources(quota, gpu_info))
                     layout["local_resources"].update(
-                        generate_local_resources(cpu_total, cpu_per_core, mem, gpu))
+                        generate_local_resources(cpu_total, cpu_per_core, mem,
+                                                 gpu))
                     layout["right"].update(generate_log_viewer(
                         current_logs, current_pod_name,
                         scroll_offset=log_scroll_offset,
                         max_lines=max_visible_rows
                     ))
                     layout["footer"].update(Panel(
-                        f"[cyan]↑/↓[/cyan] Scroll  [cyan]r[/cyan] Refresh  [cyan]ESC/Backspace[/cyan] Close  [dim](auto-refresh {fetch_interval}s)[/dim]  Viewing: [bold]{current_pod_name}[/bold]",
+                        f"[cyan]↑/↓[/cyan] Scroll  [cyan]r[/cyan] Refresh  "
+                        f"[cyan]ESC/Backspace[/cyan] Close  "
+                        f"[dim](auto-refresh {fetch_interval}s)[/dim]  "
+                        f"Viewing: [bold]{current_pod_name}[/bold]",
                         style="dim"))
                 else:
                     # Normal job/pod list mode
@@ -964,39 +937,50 @@ def main():
                         # Open log viewer for selected pod
                         if total_rows > 0 and selected_index < len(all_rows):
                             selected_row = all_rows[selected_index]
-                            if selected_row['type'] == 'pod' and selected_row['pod_name']:
+                            if (selected_row['type'] == 'pod' and
+                                    selected_row['pod_name']):
                                 viewing_logs = True
                                 current_pod_name = selected_row['pod_name']
                                 log_scroll_offset = 0
                                 current_logs = get_pod_logs(
                                     args.namespace, current_pod_name,
-                                    tail_lines=500, use_mock=args.mock
+                                    tail_lines=500, use_mock=args.mock,
+                                    mock_data=mock_data
                                 )
 
                     now = time.time()
                     if now - last_fetch > fetch_interval:
+                        pods = get_pods_list(args.namespace, use_mock=args.mock,
+                                             mock_data=mock_data)
                         quota = get_quota(args.namespace, use_mock=args.mock,
                                           mock_data=mock_data)
-                        gpu_info = get_gpu_info(args.namespace, use_mock=args.mock,
+                        gpu_info = get_gpu_info(args.namespace, pods=pods,
+                                                use_mock=args.mock,
                                                 mock_data=mock_data)
-                        jobs = get_jobs_pods(args.namespace, use_mock=args.mock,
-                                             mock_data=mock_data, gpu_info=gpu_info)
+                        jobs = get_jobs_pods(args.namespace, pods=pods,
+                                             use_mock=args.mock,
+                                             mock_data=mock_data,
+                                             gpu_info=gpu_info)
                         last_fetch = now
 
                     jobs_title = f"Jobs ({len(jobs)})"
-                    
+
                     # Generate table with selection
                     table, _ = generate_table(
                         jobs, offset=scroll_offset,
                         max_rows=max_visible_rows, selected_index=selected_index
                     )
 
-                    layout["cluster_resources"].update(generate_cluster_resources(quota, gpu_info))
+                    layout["cluster_resources"].update(
+                        generate_cluster_resources(quota, gpu_info))
                     layout["local_resources"].update(
-                        generate_local_resources(cpu_total, cpu_per_core, mem, gpu))
-                    layout["right"].update(Panel(table, title=jobs_title, border_style="green"))
+                        generate_local_resources(cpu_total, cpu_per_core, mem,
+                                                 gpu))
+                    layout["right"].update(Panel(table, title=jobs_title,
+                                                 border_style="green"))
                     layout["footer"].update(Panel(
-                        "[cyan]↑/↓[/cyan] Navigate  [cyan]Enter[/cyan] View Logs  [cyan]q[/cyan] Quit",
+                        "[cyan]↑/↓[/cyan] Navigate  [cyan]Enter[/cyan] View "
+                        "Logs  [cyan]q[/cyan] Quit",
                         style="dim"))
 
                 time.sleep(0.1)

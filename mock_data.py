@@ -250,7 +250,7 @@ def _build_jobs_items(jobs_data):
         resources = {}
         node_selector = {}
         gpu_count = job_info.get("gpu", 0)
-        
+
         if gpu_count > 0:
             resources = {
                 "requests": {
@@ -259,7 +259,7 @@ def _build_jobs_items(jobs_data):
                     "nvidia.com/gpu": str(gpu_count)
                 },
                 "limits": {
-                    "cpu": "20", 
+                    "cpu": "20",
                     "memory": "128Gi",
                     "nvidia.com/gpu": str(gpu_count)
                 }
@@ -271,7 +271,7 @@ def _build_jobs_items(jobs_data):
                 node_selector = {"nvidia.com/gpu.product": "NVIDIA-A100-SXM4-80GB"}
             else:
                 node_selector = {"nvidia.com/gpu.product": "NVIDIA-A100-SXM4-40GB"}
-        
+
         pod_spec = {
             "containers": [
                 {
@@ -282,7 +282,7 @@ def _build_jobs_items(jobs_data):
         }
         if node_selector:
             pod_spec["nodeSelector"] = node_selector
-        
+
         job = {
             "metadata": {"name": job_info["name"]},
             "status": {
@@ -316,7 +316,7 @@ def _generate_pods_items(jobs_data):
     pods_items = []
     # GPU node assignment based on job GPU requirements
     gpu_nodes = ['gpu-node-01', 'gpu-node-02', 'gpu-node-03']
-    
+
     for job_info in jobs_data:
         # ~60% get 1 pod, ~30% get 2 pods, ~10% get 3 pods
         rand = random.random()
@@ -328,7 +328,7 @@ def _generate_pods_items(jobs_data):
             phase = "Succeeded"
         else:
             phase = "Failed"
-        
+
         # Assign node based on GPU requirements
         gpu_req = job_info.get("gpu", 0)
         if gpu_req > 0:
@@ -336,7 +336,8 @@ def _generate_pods_items(jobs_data):
             if gpu_req >= 4:
                 node_name = 'gpu-node-01'  # A100
             elif gpu_req >= 2:
-                node_name = random.choice(['gpu-node-01', 'gpu-node-03'])  # A100 or V100
+                # A100 or V100
+                node_name = random.choice(['gpu-node-01', 'gpu-node-03'])
             else:
                 node_name = random.choice(gpu_nodes)
         else:
@@ -358,22 +359,102 @@ def _generate_pods_items(jobs_data):
     return pods_items
 
 
+def _generate_gpu_info():
+    """Generate mock GPU information matching typical HPC cluster."""
+    nodes = [
+        {'name': 'gpu-node-01', 'gpu_type': 'H100-80GB',
+         'gpu_count': 8, 'allocated': 4},
+        {'name': 'gpu-node-02', 'gpu_type': 'H100-80GB',
+         'gpu_count': 8, 'allocated': 0},
+        {'name': 'gpu-node-03', 'gpu_type': 'A100-80GB',
+         'gpu_count': 8, 'allocated': 6},
+        {'name': 'gpu-node-04', 'gpu_type': 'A100-80GB',
+         'gpu_count': 8, 'allocated': 2},
+        {'name': 'gpu-node-05', 'gpu_type': 'A100-40GB',
+         'gpu_count': 4, 'allocated': 3},
+    ]
+
+    node_gpu_map = {
+        'gpu-node-01': 'H100-80GB',
+        'gpu-node-02': 'H100-80GB',
+        'gpu-node-03': 'A100-80GB',
+        'gpu-node-04': 'A100-80GB',
+        'gpu-node-05': 'A100-40GB',
+    }
+
+    # Calculate totals dynamically
+    total_gpus = sum(n['gpu_count'] for n in nodes)
+    allocated_gpus = sum(n['allocated'] for n in nodes)
+    gpu_types = sorted(list(set(n['gpu_type'] for n in nodes)))
+
+    return {
+        'nodes': nodes,
+        'total_gpus': total_gpus,
+        'allocated_gpus': allocated_gpus,
+        'gpu_types': gpu_types,
+        'node_gpu_map': node_gpu_map
+    }
+
+
+def _generate_mock_logs(tail_lines=100):
+    """Generate mock log data."""
+    mock_logs = []
+    log_messages = [
+        "INFO: Starting application...",
+        "INFO: Loading configuration from /etc/config/app.yaml",
+        "INFO: Connecting to database...",
+        "INFO: Database connection established",
+        "INFO: Initializing worker threads...",
+        "DEBUG: Worker pool size: 4",
+        "INFO: Processing batch 1/10",
+        "INFO: Processing batch 2/10",
+        "WARNING: High memory usage detected (85%)",
+        "INFO: Processing batch 3/10",
+        "INFO: Processing batch 4/10",
+        "DEBUG: Cache hit ratio: 0.87",
+        "INFO: Processing batch 5/10",
+        "ERROR: Failed to process item #42: timeout",
+        "INFO: Retrying item #42...",
+        "INFO: Processing batch 6/10",
+        "INFO: Processing batch 7/10",
+        "INFO: Processing batch 8/10",
+        "DEBUG: Checkpoint saved",
+        "INFO: Processing batch 9/10",
+        "INFO: Processing batch 10/10",
+        "INFO: All batches completed successfully",
+        "INFO: Cleaning up resources...",
+        "INFO: Application finished",
+    ]
+
+    # Repeat messages if needed to fill tail_lines
+    while len(log_messages) < tail_lines:
+        log_messages.extend(log_messages)
+
+    for i, msg in enumerate(log_messages[:tail_lines]):
+        timestamp = f"2026-01-21T10:{i:02d}:00Z"
+        mock_logs.append(f"{timestamp} {msg}")
+    return "\n".join(mock_logs)
+
+
 def _generate_quota():
+    # Helper to calculate expected usage from current jobs/nodes
+    # For simplicity in mock, we'll align this with the GPU info
+    # GPU: 15 used (from nodes allocated), 36 total
     return {
         "cpu": {
-            "used": 8,
-            "limit": 16,
-            "str": "8 / 16"
+            "used": 48,
+            "limit": 96,
+            "str": "48 / 96"
         },
         "mem": {
-            "used": 32,
-            "limit": 64,
-            "str": "32Gi / 64Gi"
+            "used": 256,
+            "limit": 512,
+            "str": "256Gi / 512Gi"
         },
         "gpu": {
-            "used": 2,
-            "limit": 4,
-            "str": "2 / 4"
+            "used": 15,
+            "limit": 36,
+            "str": "15 / 36"
         }
     }
 
@@ -384,6 +465,8 @@ def generate_mock_data():
     jobs_data = _generate_jobs_data(now)
     jobs_items = _build_jobs_items(jobs_data)
     pods_items = _generate_pods_items(jobs_data)
+    gpu_info = _generate_gpu_info()
+    mock_logs = _generate_mock_logs(500)
 
     return {
         "quota": _generate_quota(),
@@ -392,5 +475,8 @@ def generate_mock_data():
         },
         "pods": {
             "items": pods_items
-        }
+        },
+        "gpu_info": gpu_info,
+        "logs": mock_logs,
+        "node_gpu_map": gpu_info['node_gpu_map'] # Convenience top-level access
     }
