@@ -591,9 +591,9 @@ def generate_table(jobs, offset=0, max_rows=None, selected_index=0):
         # Apply selection highlighting
         if is_selected:
             name_display = f"[reverse]{row['display_name']}[/reverse]"
-            # Add indicator for pods that can show logs
+            # Add indicator for pods that can show logs without breaking tree indentation
             if row['type'] == 'pod':
-                name_display = f"[reverse]▶ {row['display_name'].strip()}[/reverse]"
+                name_display = f"[reverse]{row['display_name']} ▶[/reverse]"
         else:
             name_display = row['display_name']
         
