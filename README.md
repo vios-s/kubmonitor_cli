@@ -24,9 +24,11 @@
 ## 🚀 Features
 
 - **📊 Real-time Dashboard**: Live updates of CPU, Memory, and GPU usage.
+- **⚡ Advanced GPU Monitoring**: Auto-detects NVIDIA GPU models (H100, A100, V100, etc.) and visualizes detailed usage quotas.
+- **📜 Live Log Viewer**: Integrated pod log viewer with auto-refresh capability.
 - **☸️ Namespace Scoped**: Monitor specific Kubernetes namespaces with ease.
 - **💻 Hybrid Metrics**: View both K8s Cluster Quotas and Local Machine stats side-by-side.
-- **⚡ Reactive TUI**: Built with `Refreshed` layouts using [Rich](https://github.com/Textualize/rich).
+- **✨ Reactive TUI**: Built with `Refreshed` layouts using [Rich](https://github.com/Textualize/rich).
 - **🖥️ Cross-Platform**: Works seamlessly on Linux, macOS, and Windows.
 
 ## 📦 Installation
@@ -96,8 +98,10 @@ kubmonitor --mock
 **Note:** When using `--mock`, you cannot specify a namespace. Mock mode uses generated test data and doesn't connect to a real cluster.
 
 This will generate realistic mock data including:
-- Simulated resource quotas (CPU, Memory, GPU)
-- Mock Kubernetes jobs with various states (running, completed, failed)
+- Simulated HPC Cluster with H100/A100 GPU nodes.
+- Simulated resource quotas (CPU, Memory, GPU).
+- Mock Kubernetes jobs with various states (running, completed, failed).
+- Live simulated logs for debugging the viewer.
 - Mock pods with realistic resource usage patterns
 - Generated timestamps and durations
 
