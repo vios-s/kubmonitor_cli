@@ -9,7 +9,7 @@
 [![PyPI Version](https://img.shields.io/pypi/v/kubmonitor-cli?style=flat-square&color=blue)](https://pypi.org/project/kubmonitor-cli/)
 [![Python Version](https://img.shields.io/pypi/pyversions/kubmonitor-cli?style=flat-square)](https://pypi.org/project/kubmonitor-cli/)
 [![License](https://img.shields.io/github/license/vios-s/kubmonitor_cli?style=flat-square)](LICENSE)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/vios-s/kubmonitor_cli/release.yml?style=flat-square)](https://github.com/vios-s/kubmonitor-cli/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/vios-s/kubmonitor_cli/release.yml?style=flat-square)](https://github.com/vios-s/kubmonitor_cli/actions)
 
 </div>
 
@@ -30,6 +30,8 @@
 - **💻 Hybrid Metrics**: View both K8s Cluster Quotas and Local Machine stats side-by-side.
 - **✨ Reactive TUI**: Built with `Refreshed` layouts using [Rich](https://github.com/Textualize/rich).
 - **🎨 Monokai Colors**: A Monokai-inspired truecolor scheme by default (`--theme classic` or `KUBMONITOR_THEME=classic` for plain terminal colors).
+- **📒 Usage Accounting**: Optional history of GPU-hours per person and per
+  research project, with label validation before you deploy.
 - **🖥️ Cross-Platform**: Works seamlessly on Linux, macOS, and Windows.
 
 ## 📦 Installation
@@ -43,8 +45,8 @@ pip install kubmonitor-cli
 Or install from source:
 
 ```bash
-git clone https://github.com/vios-s/kubmonitor-cli.git
-cd kubmonitor-cli
+git clone https://github.com/vios-s/kubmonitor_cli.git
+cd kubmonitor_cli
 pip install .
 ```
 
@@ -65,7 +67,7 @@ Check the version:
 ```bash
 kubmonitor --version
 # or
-kubmonitor -V
+kubmonitor -v      # -V works too
 ```
 
 ### Monitor a Namespace
@@ -116,6 +118,80 @@ This will generate realistic mock data including:
 | `u` | **Per-user view**: live GPU allocation leaderboard |
 | `q` | **Quit** the application |
 | `Ctrl+C` | Force Exit |
+
+## 📒 Usage Accounting
+
+Beyond the live dashboard, KubMonitor can keep a **history** of who ran what,
+so a shared namespace can answer "where did the GPU-hours go this month?".
+Three subcommands, all independent of the TUI:
+
+| Command | What it does |
+| :--- | :--- |
+| `kubmonitor collect` | Snapshot current workloads into a SQLite database. Run it on a schedule (cron). |
+| `kubmonitor report` | Summarise that history per person and per project. |
+| `kubmonitor validate` | Check job YAML carries the required ownership labels — *before* you deploy it. |
+
+### Ownership labels
+
+Accounting works by reading three labels off each workload, on the Job **and**
+its pod template:
+
+```yaml
+labels:
+  owner: ada_lovelace     # the account that runs it
+  project: mri_recon      # the RESEARCH project — the strand of work
+  purpose: batch          # batch | interactive | serving
+```
+
+`project` is the user's **research project**, not the cluster allocation or
+group code. A group code would be identical on every workload in the namespace
+and tell a report nothing. Reports group by this value *verbatim*, so
+`mri_recon` and `mri-recon` count as two different projects.
+
+See **[docs/LABELS.md](docs/LABELS.md)** for the full contract, including the
+optional label prefix and what happens to workloads collected before a label
+existed.
+
+### Configuration
+
+Most invocations read a project config. `--config` wins; otherwise
+`$KUBMONITOR_CONFIG`, then `~/.config/kubmonitor/project.yaml`:
+
+```yaml
+project: eidf105                       # allocation scope key for the DB
+namespace: eidf105ns                   # namespace to collect from
+db: /path/to/usage.sqlite              # where history accumulates
+members_file: /path/to/members.yaml    # optional: accounts -> people
+label_prefix: ""                       # optional: prefix on the three labels
+
+# Optional. The group's known research projects — advisory only.
+research_projects:
+  - mri_recon
+  - fairness
+  - diffusion_priors
+```
+
+A full annotated example lives in
+[`examples/project.yaml`](examples/project.yaml). Keep your real copy (and
+`members.yaml`, and the database) **outside** any public repo — `members.yaml`
+contains personal data.
+
+### Catching spelling drift
+
+With `research_projects` set, `validate` flags a name that looks like a
+misspelling of a registered one — the failure mode that quietly splits one
+project across two rows in every report:
+
+```console
+$ kubmonitor validate --config project.yaml job.yaml
+warning: job.yaml: Job project 'mri-recon' is not registered, but 'mri_recon'
+         is — same name, different spelling? Reports count them separately
+OK: 1 workload document(s) carry the required ownership labels
+```
+
+This is **advisory** and never fails the command, so nobody has to land a
+config change before submitting a job. `validate` also works with no config at
+all — you simply lose the spelling hint.
 
 ## 🛠️ Technology Stack
 
