@@ -19,7 +19,7 @@
 
 **KubMonitor** provides a real-time, high-fidelity dashboard for your Kubernetes clusters directly in your terminal. Inspired by tools like `nvitop` and `btop`, it combines cluster quotas with local machine metrics in a slick, responsive TUI (Terminal User Interface).
 
-![KubMonitor Demo](assets/screenshot.png)
+![KubMonitor Demo](assets/screenshot.svg)
 
 ## 🚀 Features
 
@@ -118,6 +118,16 @@ This will generate realistic mock data including:
 | `u` | **Per-user view**: live GPU allocation leaderboard |
 | `q` | **Quit** the application |
 | `Ctrl+C` | Force Exit |
+
+Press `u` for the **per-user view** — who is holding which GPUs right now,
+with pending counts and the models they are on:
+
+![Per-user GPU view](assets/screenshot-users.svg)
+
+> Both images are generated from the current code by
+> `python3 tools/render_screenshot.py`, so they cannot drift out of date the
+> way a hand-taken screenshot does. Re-run it in any PR that changes the
+> layout. The data shown is `--mock` data, not a real namespace.
 
 ## 📒 Usage Accounting
 
