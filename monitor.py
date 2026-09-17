@@ -910,7 +910,13 @@ def main():
     # `kubmonitor collect --version` is an "unrecognized arguments" error
     # instead of an answer. Asking a tool its version should never depend on
     # which mode you happened to ask from.
-    if any(arg in VERSION_FLAGS for arg in sys.argv[1:]):
+    # Stop at `--`: everything after it is a literal operand by POSIX
+    # convention, so a file genuinely named `--version` still validates
+    # rather than being mistaken for a request for the version.
+    argv = sys.argv[1:]
+    if "--" in argv:
+        argv = argv[:argv.index("--")]
+    if any(arg in VERSION_FLAGS for arg in argv):
         print(f"kubmonitor {__version__}")
         sys.exit(0)
 
