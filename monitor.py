@@ -867,7 +867,7 @@ def print_help():
         "                 [dim]Also settable via $KUBMONITOR_THEME.[/dim]"
     )
     console.print(
-        "  [magenta]-V, --version[/magenta]  Show kubmonitor's version "
+        "  [magenta]-v, -V, --version[/magenta]  Show kubmonitor's version "
         "number.\n"
     )
 
@@ -900,7 +900,20 @@ def print_help():
 ACCOUNTING_SUBCOMMANDS = ("collect", "report", "validate")
 
 
+VERSION_FLAGS = ("--version", "-V", "-v")
+
+
 def main():
+    # Answered before anything else is parsed, because the version is a
+    # property of the program rather than of a subcommand: each accounting
+    # subcommand builds its own parser, so without this
+    # `kubmonitor collect --version` is an "unrecognized arguments" error
+    # instead of an answer. Asking a tool its version should never depend on
+    # which mode you happened to ask from.
+    if any(arg in VERSION_FLAGS for arg in sys.argv[1:]):
+        print(f"kubmonitor {__version__}")
+        sys.exit(0)
+
     # Accounting subcommands live in their own module; everything else is
     # the original TUI (`kubmonitor [namespace]`).
     if len(sys.argv) > 1 and sys.argv[1] in ACCOUNTING_SUBCOMMANDS:
@@ -918,7 +931,9 @@ def main():
                         default=None,
                         help='color scheme (default: $KUBMONITOR_THEME '
                              'or monokai)')
-    parser.add_argument('--version', '-V', action='version',
+    # Handled above for every invocation form; still declared so it appears
+    # in `kubmonitor --help` output and in argparse's usage line.
+    parser.add_argument('--version', '-V', '-v', action='version',
                         version=f'kubmonitor {__version__}')
 
     args = parser.parse_args()
