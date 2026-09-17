@@ -97,13 +97,28 @@ def resolve_account(name, label_sets, prefix, name_map, image_hints=()):
     return None, "none"
 
 
-def _purpose_of(label_sets, prefix):
-    keys = ([f"{prefix}/purpose"] if prefix else []) + ["purpose"]
+def _label_value(label_sets, prefix, name):
+    """First non-empty value of `name` across label_sets, prefix first."""
+    keys = ([f"{prefix}/{name}"] if prefix else []) + [name]
     for key in keys:
         for labels in label_sets:
             if labels.get(key):
                 return labels[key]
     return None
+
+
+def _purpose_of(label_sets, prefix):
+    return _label_value(label_sets, prefix, "purpose")
+
+
+def _research_project_of(label_sets, prefix):
+    """The `project` label — the owner's research project (docs/LABELS.md).
+
+    Not the allocation code: that is `cfg.project`, the scope key. A
+    workload with no such label stays NULL rather than inheriting the
+    allocation, so reports can tell "unlabelled" from a real project.
+    """
+    return _label_value(label_sets, prefix, "project")
 
 
 def _pod_spec_requests(pod_spec):
@@ -382,6 +397,8 @@ def collect(cfg, use_mock=False, verbose=False):
                 "kind": "Job", "name": name,
                 "account": account, "attribution": attribution,
                 "purpose": _purpose_of(label_sets, cfg.label_prefix),
+                "research_project": _research_project_of(
+                    label_sets, cfg.label_prefix),
                 "gpu_count": gpu, "gpu_model": gpu_model,
                 "image": _images_of(pod_spec),
                 "cpu_request": cpu, "mem_request_gb": mem_gb,
@@ -415,6 +432,8 @@ def collect(cfg, use_mock=False, verbose=False):
                 "kind": "Pod", "name": name,
                 "account": account, "attribution": attribution,
                 "purpose": _purpose_of(label_sets, cfg.label_prefix),
+                "research_project": _research_project_of(
+                    label_sets, cfg.label_prefix),
                 "gpu_count": gpu, "gpu_model": gpu_model,
                 "image": _images_of(pod_spec),
                 "cpu_request": cpu, "mem_request_gb": mem_gb,

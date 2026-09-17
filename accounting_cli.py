@@ -70,13 +70,45 @@ def _cmd_report(argv):
     return 0
 
 
-def _validate_doc(doc, prefix, errors, warnings, source):
+def _normalize_project(value):
+    """Fold the ways one project name gets spelled differently.
+
+    `mri_recon`, `MRI_Recon` and `mri.recon` are one project written three
+    ways; comparing the folded forms is what lets us say "did you mean".
+    """
+    return str(value).lower().replace("-", "_").replace(".", "_")
+
+
+def _project_warning(value, known):
+    """Advisory note for a `project` label value, or None if it looks fine.
+
+    Never an error: someone starting a new project must not have to land a
+    config change before they can submit a job.
+    """
+    if not known or value in known:
+        return None
+    folded = {_normalize_project(k): k for k in known}
+    match = folded.get(_normalize_project(value))
+    if match:
+        return (f"project '{value}' is not registered, but '{match}' is — "
+                f"same name, different spelling? Reports count them "
+                f"separately")
+    return (f"project '{value}' is not in the config's research_projects "
+            f"list (fine for a new project — add it there so others spell "
+            f"it the same way)")
+
+
+def _validate_doc(doc, prefix, errors, warnings, source, known=()):
     kind = doc.get("kind")
     if kind not in ("Job", "Pod", "Deployment", "StatefulSet"):
         return False
 
     def key_of(name):
         return f"{prefix}/{name}" if prefix else name
+
+    # Collected across both label sets so an unregistered project is
+    # reported once per document, not once per labels block.
+    seen_projects = set()
 
     def check(labels, where):
         for key in (key_of("owner"), key_of("project")):
@@ -87,6 +119,8 @@ def _validate_doc(doc, prefix, errors, warnings, source):
                 errors.append(
                     f"{source}: {where} label '{key}' still has an "
                     f"unfilled placeholder: {value}")
+            elif key == key_of("project"):
+                seen_projects.add(str(value))
         if not (labels or {}).get(key_of("purpose")):
             warnings.append(
                 f"{source}: {where} has no '{key_of('purpose')}' label "
@@ -98,7 +132,32 @@ def _validate_doc(doc, prefix, errors, warnings, source):
         tpl = ((doc.get("spec") or {}).get("template") or {})
         check((tpl.get("metadata") or {}).get("labels"),
               f"{kind} pod template")
+    for value in sorted(seen_projects):
+        note = _project_warning(value, known)
+        if note:
+            warnings.append(f"{source}: {kind} {note}")
     return True
+
+
+def _known_projects(config_arg):
+    """Registered research projects, or () if we cannot find out.
+
+    Best-effort by design: `validate` is the one subcommand that works with
+    no config at all (build.sh calls it that way, straight after generating
+    a job file), so a missing or broken config must cost you the spelling
+    hint and nothing else. Only an explicit --config is worth complaining
+    about, since there the user named a file they expected to be read.
+    """
+    path = config_arg or find_default_config()
+    if not path:
+        return ()
+    try:
+        return tuple(ProjectConfig.load(path).research_projects)
+    except (ConfigError, OSError, yaml.YAMLError) as exc:
+        if config_arg:
+            print(f"warning: --config {path}: {exc} "
+                  f"(continuing without the project name check)")
+        return ()
 
 
 def _cmd_validate(argv):
@@ -107,8 +166,11 @@ def _cmd_validate(argv):
     parser.add_argument("--prefix", default="",
                         help="optional label prefix of the contract "
                              "(default: unprefixed owner/project/purpose)")
+    parser.add_argument("--config", help="project config yaml, read only for "
+                                         "its research_projects list")
     args = parser.parse_args(argv)
 
+    known = _known_projects(args.config)
     errors, warnings = [], []
     checked = 0
     for path in args.files:
@@ -120,7 +182,7 @@ def _cmd_validate(argv):
             continue
         for doc in docs:
             if isinstance(doc, dict) and _validate_doc(
-                    doc, args.prefix, errors, warnings, path):
+                    doc, args.prefix, errors, warnings, path, known):
                 checked += 1
 
     for warning in warnings:

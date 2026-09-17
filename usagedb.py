@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS workloads (
     account      TEXT,               -- resolved cluster account, NULL if unknown
     attribution  TEXT NOT NULL,      -- label | name | image | manual | none
     purpose      TEXT,               -- batch | interactive | serving | NULL
+    research_project TEXT,           -- `project` label: the owner's research
+                                     -- project (docs/LABELS.md), NULL if
+                                     -- unlabelled. Distinct from the `project`
+                                     -- column above, which is the allocation
+                                     -- scope key.
     gpu_count    INTEGER NOT NULL DEFAULT 0,
     gpu_model    TEXT,
     image        TEXT,               -- container image(s), comma-joined
@@ -96,6 +101,14 @@ def _migrate(conn):
     if "image" not in cols:
         conn.execute("ALTER TABLE workloads ADD COLUMN image TEXT")
         conn.commit()
+    if "research_project" not in cols:
+        # Rows collected before this column existed keep NULL: the `project`
+        # label was required by `validate` but never collected, so there is
+        # no historical value to backfill from. Reports must treat NULL as
+        # "unknown", not as a project named after the allocation.
+        conn.execute(
+            "ALTER TABLE workloads ADD COLUMN research_project TEXT")
+        conn.commit()
     sample_cols = {row["name"] for row in
                    conn.execute("PRAGMA table_info(util_samples)")}
     if "workload_uid" not in sample_cols:
@@ -123,17 +136,29 @@ def upsert_workload(conn, w):
         w["created_at"] = w.get("created_at") or existing["created_at"]
     conn.execute(
         """INSERT INTO workloads (uid, project, namespace, kind, name,
-               account, attribution, purpose, gpu_count, gpu_model, image,
-               cpu_request, mem_request_gb, node, created_at, started_at,
-               completed_at, phase, first_seen, last_seen)
+               account, attribution, purpose, research_project, gpu_count,
+               gpu_model, image, cpu_request, mem_request_gb, node,
+               created_at, started_at, completed_at, phase, first_seen,
+               last_seen)
            VALUES (:uid, :project, :namespace, :kind, :name, :account,
-               :attribution, :purpose, :gpu_count, :gpu_model, :image,
-               :cpu_request, :mem_request_gb, :node, :created_at,
-               :started_at, :completed_at, :phase, :first_seen, :last_seen)
+               :attribution, :purpose, :research_project, :gpu_count,
+               :gpu_model, :image, :cpu_request, :mem_request_gb, :node,
+               :created_at, :started_at, :completed_at, :phase, :first_seen,
+               :last_seen)
+           -- Two groups of columns here, and the difference is deliberate.
+           -- account/purpose/research_project come from labels on the object
+           -- itself, present in the same API response or genuinely absent:
+           -- they overwrite, so relabelling a workload is reflected and a
+           -- removed label does not leave a stale value no one can clear.
+           -- gpu_model/image/node come from sources that are legitimately
+           -- unavailable on some passes (node before scheduling, gpu_model
+           -- from an nvidia-smi exec that can fail), so they COALESCE rather
+           -- than let one unlucky poll erase a known value.
            ON CONFLICT(uid) DO UPDATE SET
                account = excluded.account,
                attribution = excluded.attribution,
                purpose = excluded.purpose,
+               research_project = excluded.research_project,
                gpu_count = excluded.gpu_count,
                gpu_model = COALESCE(excluded.gpu_model, workloads.gpu_model),
                image = COALESCE(excluded.image, workloads.image),

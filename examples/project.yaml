@@ -6,6 +6,10 @@
 # Keep the real copy (and members.yaml, and the SQLite DB) OUTSIDE any
 # public repo — members.yaml contains personal data.
 
+# The allocation/group code this config monitors — the scope key every row
+# in the DB is filed under. NOT the `project` label on workloads, which is
+# the owner's research project (docs/LABELS.md). This key is redundant with
+# `namespace` below and is slated for removal.
 project: eidf105              # short project id, stored with every record
 namespace: eidf105ns          # Kubernetes namespace to collect from
 kube_context: ""              # optional kubectl context; empty = current
@@ -26,3 +30,15 @@ sample_gpu_util: true
 # Optional label prefix (docs/LABELS.md). Empty = plain owner/project/
 # purpose labels, which is the default contract.
 label_prefix: ""
+
+# Known values of the `project` label — the group's research projects.
+# Advisory only: `kubmonitor validate` warns about a value that is not
+# listed, but never rejects it, so nobody has to land a config change
+# before submitting a job. The point is catching spelling drift, since
+# `mri_recon` and `mri-recon` are two different rows in every report.
+# Group convention is underscores (matching account names like
+# `ada_lovelace`). Omit or leave empty to disable the check entirely.
+research_projects:
+  - mri_recon
+  - fairness
+  - diffusion_priors

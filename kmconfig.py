@@ -90,7 +90,7 @@ class Members:
 class ProjectConfig:
     def __init__(self, project, namespace, db, members_file="",
                  kube_context="", sample_gpu_util=False,
-                 label_prefix="", path=""):
+                 label_prefix="", research_projects=(), path=""):
         self.project = project
         self.namespace = namespace
         self.db = db
@@ -98,6 +98,10 @@ class ProjectConfig:
         self.kube_context = kube_context
         self.sample_gpu_util = sample_gpu_util
         self.label_prefix = label_prefix
+        # Known `project` label values. Advisory only: an unlisted value is
+        # warned about, never rejected — someone starting a new project must
+        # not have to land a config change first.
+        self.research_projects = list(research_projects)
         self.path = path
 
     @classmethod
@@ -125,6 +129,8 @@ class ProjectConfig:
             kube_context=str(data.get("kube_context", "") or ""),
             sample_gpu_util=bool(data.get("sample_gpu_util", False)),
             label_prefix=str(data.get("label_prefix", "") or ""),
+            research_projects=[
+                str(p) for p in (data.get("research_projects") or [])],
             path=os.path.abspath(path),
         )
 
