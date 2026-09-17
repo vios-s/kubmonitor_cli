@@ -155,7 +155,9 @@ existed.
 ### Configuration
 
 Most invocations read a project config. `--config` wins; otherwise
-`$KUBMONITOR_CONFIG`, then `~/.config/kubmonitor/project.yaml`:
+`$KUBMONITOR_CONFIG`, then `~/.config/kubmonitor/project.yaml`. If that
+file is absent and `~/.config/kubmonitor/` contains exactly one `.yaml` or
+`.yml` file, that file is used as a final fallback:
 
 ```yaml
 project: eidf105                       # allocation scope key for the DB
