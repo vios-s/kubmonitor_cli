@@ -162,7 +162,9 @@ file is absent and `~/.config/kubmonitor/` contains exactly one `.yaml` or
 ```yaml
 project: eidf105                       # allocation scope key for the DB
 namespace: eidf105ns                   # namespace to collect from
+kube_context: ""                       # optional kubectl context
 db: /path/to/usage.sqlite              # where history accumulates
+sample_gpu_util: false                 # optional GPU utilization sampling
 members_file: /path/to/members.yaml    # optional: accounts -> people
 label_prefix: ""                       # optional: prefix on the three labels
 
