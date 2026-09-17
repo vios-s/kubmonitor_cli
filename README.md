@@ -30,8 +30,8 @@
 - **💻 Hybrid Metrics**: View both K8s Cluster Quotas and Local Machine stats side-by-side.
 - **✨ Reactive TUI**: Built with `Refreshed` layouts using [Rich](https://github.com/Textualize/rich).
 - **🎨 Monokai Colors**: A Monokai-inspired truecolor scheme by default (`--theme classic` or `KUBMONITOR_THEME=classic` for plain terminal colors).
-- **📒 Usage Accounting**: Optional history of GPU-hours per person and per
-  research project, with label validation before you deploy.
+- **📒 Usage Accounting**: Optional history of GPU-hours per person, with
+  label validation before you deploy.
 - **🖥️ Cross-Platform**: Works seamlessly on Linux, macOS, and Windows.
 
 ## 📦 Installation
